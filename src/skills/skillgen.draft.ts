@@ -11,6 +11,11 @@ import type { RankedCandidate } from "../core/types.ts";
 export interface ScriptEntry { filename: string; language: string; code: string; }
 export interface RefEntry { filename: string; markdown: string; }
 export interface EvalCase { name: string; prompt: string; assertions: string[]; }
+// Skill chaining: a skill should not live alone — it should know which OTHER skills it
+// needs before it (depends_on), what to reach for next (followed_by), or what's adjacent
+// (see_also), so it can route work it can't do itself even when the system prompt is gone.
+export type SkillRelation = "depends_on" | "followed_by" | "see_also";
+export interface RelatedSkill { name: string; relation: SkillRelation; why: string; }
 export interface Draft {
   name: string;
   description: string;
@@ -19,6 +24,7 @@ export interface Draft {
   skill_body_markdown: string;
   references: RefEntry[];
   scripts: ScriptEntry[];
+  related_skills: RelatedSkill[];
   evals: EvalCase[];
   citations: string[];
   guardrails: string[];
@@ -113,6 +119,18 @@ export function validateDraft(obj: any, cand: RankedCandidate): Draft {
         }))
     : [];
 
+  const RELATIONS = ["depends_on", "followed_by", "see_also"];
+  const related_skills: RelatedSkill[] = Array.isArray(obj.related_skills)
+    ? obj.related_skills
+        .filter((r: any) => r && typeof r.name === "string" && RELATIONS.includes(r.relation))
+        .map((r: any) => ({
+          name: coerceName(r.name, r.name),
+          relation: r.relation as SkillRelation,
+          why: typeof r.why === "string" ? r.why.slice(0, 280) : "",
+        }))
+        .slice(0, 12)
+    : [];
+
   const confidence =
     typeof obj.confidence === "number" && obj.confidence >= 0 && obj.confidence <= 1
       ? obj.confidence
@@ -126,6 +144,7 @@ export function validateDraft(obj: any, cand: RankedCandidate): Draft {
     skill_body_markdown,
     references,
     scripts,
+    related_skills,
     evals,
     citations: asStrArr(obj.citations),
     guardrails: asStrArr(obj.guardrails),

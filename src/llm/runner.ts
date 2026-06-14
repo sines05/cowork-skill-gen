@@ -31,6 +31,20 @@ export function configureRunner(opts: { runner?: RunnerName; ccsProfile?: string
   if (opts.ccsProfile) _ccsProfile = opts.ccsProfile;
 }
 
+// Resolve a CLI's real executable path before spawning. On Windows the `claude`/`ccs`
+// entry points are `.cmd` shims and Bun.spawn(["claude", …]) does NOT resolve a bare name
+// against PATHEXT — it fails with `ENOENT: uv_spawn 'claude'`. Bun.which() does the PATH +
+// PATHEXT lookup (→ `…\claude.cmd`), which Bun.spawn then executes correctly. Memoized.
+const _binCache = new Map<string, string>();
+export function resolveBin(name: string): string {
+  let p = _binCache.get(name);
+  if (p === undefined) {
+    p = Bun.which(name) ?? name; // fall back to the bare name (POSIX: resolves fine)
+    _binCache.set(name, p);
+  }
+  return p;
+}
+
 export function getRunnerName(): RunnerName {
   return _runner;
 }
@@ -72,7 +86,7 @@ export function runnerEnv(): Promise<Record<string, string>> {
     // taking down the whole pipeline. The old code hard-required a specific profile
     // ("my-api"); on a machine without it, every LLM call died. Portability > purity.
     try {
-      const proc = Bun.spawn(["ccs", "env", _ccsProfile], {
+      const proc = Bun.spawn([resolveBin("ccs"), "env", _ccsProfile], {
         stdout: "pipe",
         stderr: "pipe",
       });

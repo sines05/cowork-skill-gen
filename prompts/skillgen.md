@@ -28,11 +28,46 @@ evidence — not invented.
 - **Imperative voice**, second person ("Read the entry point before editing it").
 - **Explain WHY**, don't bark. Avoid all-caps `ALWAYS`/`NEVER`/`MUST` — Anthropic calls
   that a yellow flag. Give the reason so the agent can generalise.
-- **`description` is the trigger** and should be a bit "pushy": state BOTH what the skill
-  does AND when to use it, with concrete keywords/contexts, because agents tend to
-  under-trigger skills. ≤ 1024 characters.
+- **`description` is the trigger — lead with WHEN, not WHAT.** Like an ID card, it answers
+  "when does this apply" so an agent can route to it. State the triggering situation +
+  concrete keywords/contexts FIRST, then briefly what it does. Agents under-trigger skills,
+  so be a bit "pushy" about the triggers. ≤ 1024 characters.
 - Keep the body focused (the spec recommends < 500 lines). Put long reference material
   in a `references` entry instead of bloating the body.
+
+## Determinism: push mechanical work to code, keep judgement in the body
+
+- **Anything deterministic → a `scripts` entry**, not prose the agent must re-reason every
+  time (parsing, formatting, fixed API calls, file moves, regex transforms). The body then
+  just says when/why to run it. This is the single biggest reliability win.
+- **Anything that needs judgement → stays in the body as guidance** (deciding *whether* a
+  result is good, choosing an approach, weighing trade-offs). Never freeze a reasoning step
+  into a script — a script can't judge "is this output actually correct".
+
+## Decomposition: index + references for multi-capability skills
+
+- If the winning workflow has **one** capability, keep a single focused `SKILL.md` body.
+- If it spans **several distinct capabilities** (e.g. a "git" skill covering push, pull,
+  merge), make the body a short **INDEX** — one line per capability + when to use it — and
+  put each capability's detailed steps in its own `references/<capability>.md` entry. This
+  keeps the always-loaded body small and lets detail load on demand.
+
+## Skill chaining: declare the network, not an island
+
+- A skill should know the **other skills it relates to**, so when it hits the edge of its
+  own competence it can route the work. Fill `related_skills` with:
+  - `depends_on` — must run BEFORE this skill (e.g. "send-gmail" depends_on "login" + "get-otp"),
+  - `followed_by` — the natural next step after this skill,
+  - `see_also` — adjacent/alternative skills.
+- Infer these from the evidence (what the user actually had to do around this task). Use
+  kebab-case skill names. `[]` if genuinely standalone.
+
+## A skill must NOT answer (leave these out entirely)
+
+- The history of how it was generated, the mining run, episode counts, or success rates.
+- The plan/spec/parameters that created it.
+- System architecture or purpose unrelated to *using* the skill.
+  (This provenance is recorded in `meta.json`, never in the SKILL the agent reads.)
 
 ## Artifact type
 
@@ -66,8 +101,9 @@ need human judgement. These feed a with-skill vs no-skill back-test downstream.
   "compatibility": "<env requirements, <=500 chars, or null>",
   "artifact_type": "skill" | "script" | "sop",
   "skill_body_markdown": "<the SKILL.md body AFTER the frontmatter: imperative steps, examples, edge cases>",
-  "references": [ { "filename": "REFERENCE.md", "markdown": "<detailed reference, optional, [] if none>" } ],
+  "references": [ { "filename": "REFERENCE.md", "markdown": "<per-capability detail; [] if single-capability>" } ],
   "scripts": [ { "filename": "run.sh", "language": "bash"|"python"|"javascript", "code": "<self-contained, error-handling>" } ],
+  "related_skills": [ { "name": "<kebab-case skill>", "relation": "depends_on"|"followed_by"|"see_also", "why": "<short>" } ],
   "evals": [ { "name": "<short>", "prompt": "<user request>", "assertions": ["<objectively verifiable>"] } ],
   "citations": ["<sessionId#idx | friction: ... | pattern: ...>"],
   "guardrails": ["<safety/quality guardrails derived from risk_flags & friction>"],
@@ -79,7 +115,7 @@ need human judgement. These feed a with-skill vs no-skill back-test downstream.
 Rules:
 - `name` MUST satisfy the regex `^[a-z0-9]+(-[a-z0-9]+)*$` and be ≤64 chars.
 - `description` non-empty, ≤1024 chars.
-- `scripts`/`references` are `[]` when not needed.
+- `scripts`/`references`/`related_skills` are `[]` when not needed.
 - Provide at least ONE valid `citation` grounding the skill in the evidence.
 - Numbers are bare JSON numbers; booleans are bare `true`/`false`.
 

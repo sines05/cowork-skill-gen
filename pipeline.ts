@@ -24,6 +24,7 @@ import {
   getModel,
   getCliVersion,
 } from "./src/llm/judge.ts";
+import { judgeEpisodeDebate } from "./src/llm/judge.debate.ts";
 import { mine } from "./src/analysis/mine.ts";
 import { report } from "./src/analysis/report.ts";
 import { configureRunner, describeRunner, type RunnerName } from "./src/llm/runner.ts";
@@ -33,6 +34,7 @@ import {
   upsertTurn,
   upsertEpisode,
   upsertLabel,
+  upsertJudgeRounds,
   isJudged,
   pruneSessionEpisodes,
   type CacheKey,
@@ -61,6 +63,8 @@ interface Flags {
   runner?: RunnerName;
   ccsProfile?: string;
   source?: string;
+  judgeDebate: boolean;
+  judgeRounds?: number;
 }
 
 // Parse a numeric flag, failing CLOSED on a missing/non-numeric value. A cost-bearing
@@ -77,7 +81,7 @@ function numFlag(name: string, raw: string | undefined): number {
 }
 
 function parseFlags(argv: string[]): Flags {
-  const f: Flags = { resume: false, classifyLlm: false, noJudge: false, yes: false, mine: false };
+  const f: Flags = { resume: false, classifyLlm: false, noJudge: false, yes: false, mine: false, judgeDebate: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -106,6 +110,8 @@ function parseFlags(argv: string[]): Flags {
       }
       case "--ccs-profile": f.ccsProfile = next(); break;
       case "--source": f.source = next(); break;
+      case "--judge-debate": f.judgeDebate = true; break;
+      case "--judge-rounds": f.judgeRounds = numFlag("--judge-rounds", next()); break;
       default:
         if (a.startsWith("--")) console.warn(`[pipeline] unknown flag ignored: ${a}`);
     }
@@ -225,7 +231,9 @@ async function main() {
       const key: CacheKey = {
         episodeId: ep.episodeId,
         contentHash: ep.contentHash,
-        judgePromptHash,
+        // Debate-judged episodes use a distinct cache namespace so they never collide
+        // with single-judge results (and re-running switches modes cleanly).
+        judgePromptHash: flags.judgeDebate ? "debate" : judgePromptHash,
         labelSchemaVersion: LABEL_SCHEMA_VERSION,
         model,
         cliVersion,
@@ -243,10 +251,23 @@ async function main() {
       spentUsd += COST_PER_JUDGE_USD;
       try {
         const rendered = renderEpisode(ep);
-        const { label, meta } = await judgeEpisode(rendered, ep.episodeId, {
-          model,
-          adapter: flags.runner === "api" ? "api" : "claude",
-        });
+        const adapter = flags.runner === "api" ? "api" : "claude";
+        let label, meta;
+        if (flags.judgeDebate) {
+          // Multi-perspective adversarial ensemble + persisted round-by-round trail.
+          const res = await judgeEpisodeDebate(rendered, ep.episodeId, {
+            model,
+            adapter,
+            maxRounds: flags.judgeRounds,
+          });
+          label = res.label;
+          meta = { ...res.meta, cli_version: cliVersion };
+          upsertJudgeRounds(db, res.debate);
+        } else {
+          const res = await judgeEpisode(rendered, ep.episodeId, { model, adapter });
+          label = res.label;
+          meta = res.meta;
+        }
         upsertLabel(db, label, meta);
         judged++;
         consecErrors = 0;

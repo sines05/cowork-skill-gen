@@ -1,15 +1,17 @@
-// cowork-audit.ts — reader for Cowork's per-session `audit.jsonl`.
+// cowork-audit.ts — summarize Cowork's per-session `audit.jsonl`.
 //
-// Cowork writes, alongside each session, an append-only `…/<sessionId>/audit.jsonl`
-// (HMAC-chained) of "tool invocations, permission decisions, file operations"
-// (verified from claude.com/docs/cowork/3p/data-storage). This is NOT the conversation
-// transcript (that's `local_<uuid>.json` — see cowork.ts), but it is a clean, structured
-// signal source: which tools ran, what was allowed/denied, which files were touched.
+// IMPORTANT (corrected 2026-06-15 against real logs — docs/COWORK_STORAGE.md):
+// `audit.jsonl` IS the verbatim conversation transcript (stream-json events, one JSON per
+// line, each HMAC-signed via `_audit_hmac`). It is the SAME file cowork.ts ingests as the
+// session transcript — not a separate tool-only log. This module is an auxiliary roll-up:
+// given the (raw or normalized) audit events, it produces a compact per-session AuditSummary
+// — tool sequence, file touches, permission denials — handy for signals/features or a quick
+// CLI smoke. The conversation itself flows through the normal pipeline via cowork.ts.
 //
-// STATUS: the audit EVENT schema is not published, so `summarizeAudit()` is a TOLERANT
-// mapper (like mapCoworkConversation) — it sniffs several plausible field names and never
-// throws. Lock it against one real `audit.jsonl`. Integration point: the Cowork source can
-// call `loadAuditSummary(sessionDir)` and feed the result into signals/features per episode.
+// Tool/file facts live in the assistant `tool_use` parts and the terminal `result` line,
+// verified shapes:
+//   assistant.message.content[] : { type:"tool_use", name, input:{ file_path|path|command, … } }
+//   result                      : { permission_denials: [...] }
 
 import { join } from "path";
 import { readEvents } from "../core/util.ts";
@@ -26,16 +28,16 @@ export interface AuditSummary {
   filesDeleted: string[];
 }
 
-// Tolerant field sniffers — Cowork's exact keys are unknown, so accept the common shapes.
-function pick<T = string>(o: any, keys: string[]): T | undefined {
-  for (const k of keys) if (o && o[k] != null) return o[k];
-  return undefined;
-}
+// Tool name → rough file-operation class, for the file-touch roll-up.
+const READ_TOOLS = new Set(["Read", "Glob", "Grep", "NotebookRead"]);
+const WRITE_TOOLS = new Set(["Write", "Edit", "NotebookEdit", "MultiEdit"]);
 
-function eventKind(e: any): string {
-  return String(
-    pick(e, ["type", "kind", "event", "action", "category"]) ?? ""
-  ).toLowerCase();
+function toolUseParts(e: any): Array<{ name: string; input: any }> {
+  const c = e?.message?.content;
+  if (!Array.isArray(c)) return [];
+  return c
+    .filter((p: any) => p && p.type === "tool_use" && typeof p.name === "string")
+    .map((p: any) => ({ name: p.name as string, input: p.input ?? {} }));
 }
 
 export function summarizeAudit(events: RawEvent[]): AuditSummary {
@@ -48,29 +50,38 @@ export function summarizeAudit(events: RawEvent[]): AuditSummary {
 
   for (const e of events as any[]) {
     if (!e || typeof e !== "object") continue;
-    const kind = eventKind(e);
 
-    // tool invocation
-    const tool = pick(e, ["tool", "tool_name", "toolName", "name"]);
-    if (tool && (kind.includes("tool") || kind.includes("invoc") || !kind)) {
-      if (tools.length === 0 || tools[tools.length - 1] !== tool) tools.push(String(tool));
+    // Tool invocations come from assistant tool_use parts.
+    if (e.type === "assistant") {
+      for (const { name, input } of toolUseParts(e)) {
+        if (tools.length === 0 || tools[tools.length - 1] !== name) tools.push(name);
+        const path = input?.file_path ?? input?.path;
+        if (typeof path === "string" && path) {
+          if (WRITE_TOOLS.has(name)) written.add(path);
+          else if (READ_TOOLS.has(name)) read.add(path);
+        }
+        // Bash deletions are best-effort from the command text.
+        if (name === "Bash" && typeof input?.command === "string") {
+          for (const m of input.command.matchAll(/\brm\s+(?:-\w+\s+)*([^\s;|&]+)/g)) {
+            deleted.add(m[1]!);
+          }
+        }
+      }
     }
 
-    // permission decision
-    const decision = String(pick(e, ["decision", "permission", "result", "outcome"]) ?? "").toLowerCase();
-    if (kind.includes("permission") || decision) {
-      if (/deny|denied|reject|block/.test(decision)) denials++;
-      else if (/allow|approved|grant|accept/.test(decision)) allows++;
+    // Permission decisions: the terminal `result` line carries the denial list; allows are
+    // approximated by successful tool results (every tool_result that isn't an error).
+    if (e.type === "result" && Array.isArray(e.permission_denials)) {
+      denials += e.permission_denials.length;
     }
-
-    // file operation
-    const fileOp = String(pick(e, ["operation", "op", "fileOp", "action"]) ?? "").toLowerCase();
-    const path = pick(e, ["path", "file", "file_path", "filePath", "target"]);
-    if (path && (kind.includes("file") || fileOp)) {
-      const p = String(path);
-      if (/write|create|modif|edit|append/.test(fileOp)) written.add(p);
-      else if (/delete|remov|unlink/.test(fileOp)) deleted.add(p);
-      else if (/read|open|stat/.test(fileOp)) read.add(p);
+    if (e.type === "user") {
+      const parts = Array.isArray(e?.message?.content) ? e.message.content : [];
+      for (const p of parts) {
+        if (p && p.type === "tool_result") {
+          if (p.is_error) denials++;
+          else allows++;
+        }
+      }
     }
   }
 
@@ -86,8 +97,9 @@ export function summarizeAudit(events: RawEvent[]): AuditSummary {
   };
 }
 
-// Load + summarize the audit.jsonl that sits next to a Cowork session, if present.
-// `sessionDir` is the `…/<sessionId>/` directory. Returns null when absent/unreadable.
+// Load + summarize the audit.jsonl for a Cowork session dir (`…/local_<taskId>/`).
+// Returns null when absent/unreadable. (cowork.ts already ingests the same file as the
+// transcript; this is for optional per-session signal enrichment.)
 export async function loadAuditSummary(sessionDir: string): Promise<AuditSummary | null> {
   const path = join(sessionDir, "audit.jsonl");
   try {

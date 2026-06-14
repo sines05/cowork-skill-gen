@@ -58,6 +58,10 @@ export interface SessionInfo {
   subagentsDir: string | null; // absolute path to <sessionId>/subagents if it exists
   startedAt: string;
   completedAt: string;
+  // Optional provenance, populated by the Cowork source from `local_<taskId>.json`
+  // (absent for Claude Code CLI sessions). Useful for per-person utilization in BI.
+  accountEmail?: string;
+  model?: string;
 }
 
 // ── Classified turn (one human turn) ──────────────────────────────────────────
@@ -153,6 +157,37 @@ export interface JudgeLabel {
   root_cause: string;
   outcome_evidence: string[];
   skill_opportunity: SkillOpportunity;
+}
+
+// ── Judge debate ensemble (multi-perspective adversarial judging) ──────────────
+// The single-LLM judge is the cheap triage tier. For the critical "good vs bad"
+// decision, an episode can be escalated to a DEBATE: N perspectives examine the log
+// through different lenses → bounded critique/refute rounds → converge → a consolidator
+// emits the final JudgeLabel. All rounds are persisted (this stage is where "wrong =
+// everything downstream is thrown away", so the reasoning trail matters).
+export type JudgePerspective = "productivity" | "accuracy" | "cost";
+
+export interface PerspectiveFinding {
+  perspective: JudgePerspective;
+  outcome_view: Outcome; // how THIS lens reads the outcome
+  confidence: number; // 0..1
+  key_findings: string[];
+  concerns: string[]; // frictions / risks this lens surfaces
+}
+
+export interface DebateRound {
+  round: number; // 1-based
+  critiques: { target: string; issue: string; severity: SignalWeight }[];
+  refutations: { claim: string; verdict: "upheld" | "revised" | "withdrawn"; note: string }[];
+}
+
+export interface DebateResult {
+  episode_id: string;
+  perspectives: PerspectiveFinding[];
+  rounds: DebateRound[];
+  converged: boolean; // true => stopped because critiques stabilized, not the round cap
+  n_rounds: number;
+  consolidator_model: string;
 }
 
 // Metadata stamped alongside a label for cache invalidation + audit.

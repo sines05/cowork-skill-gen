@@ -96,6 +96,22 @@ CREATE TABLE IF NOT EXISTS episode_labels (
   FOREIGN KEY (episode_id) REFERENCES episodes(episode_id)
 );
 
+-- Debate-ensemble audit trail. One row per episode judged via the multi-perspective
+-- debate (judge.debate.ts): the perspectives, every critique/refute round, and whether
+-- the debate converged. Kept because this is the "wrong → all downstream discarded" stage,
+-- so the reasoning trail must be reviewable. The final JudgeLabel still lands in
+-- episode_labels; this table is the provenance behind it.
+CREATE TABLE IF NOT EXISTS episode_judge_rounds (
+  episode_id        TEXT PRIMARY KEY,
+  perspectives_json TEXT,                  -- JSON array of PerspectiveFinding
+  rounds_json       TEXT,                  -- JSON array of DebateRound
+  n_rounds          INTEGER,
+  converged         INTEGER,               -- 0/1
+  consolidator_model TEXT,
+  created_at        TEXT,
+  FOREIGN KEY (episode_id) REFERENCES episodes(episode_id)
+);
+
 CREATE TABLE IF NOT EXISTS calibration (
   episode_id    TEXT PRIMARY KEY,
   stratum       TEXT,

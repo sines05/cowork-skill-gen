@@ -19,7 +19,7 @@ import type {
   SkillType,
 } from "../core/types.ts";
 import { median } from "../core/util.ts";
-import { runnerEnv } from "../llm/runner.ts";
+import { runnerEnv, resolveBin } from "../llm/runner.ts";
 
 // Internal flag: LLM grouping pass. Default OFF for DETERMINISM — the eval report
 // flagged that the LLM merge gave different clusters across runs (a cluster appearing
@@ -151,7 +151,7 @@ mapping each input string to its cluster label: {"<input>": "<cluster label>", .
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const proc = Bun.spawn(["claude", "-p", "--output-format", "json"], {
+    const proc = Bun.spawn([resolveBin("claude"), "-p", "--output-format", "json"], {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",

@@ -10,6 +10,7 @@ import type {
   JudgeMeta,
   CalibrationRow,
   TaskCluster,
+  DebateResult,
 } from "../core/types.ts";
 import { defaultDbPath } from "../core/paths.ts";
 
@@ -242,6 +243,27 @@ export function upsertLabel(db: Database, label: JudgeLabel, meta: JudgeMeta): v
     $jph: meta.judge_prompt_hash,
     $lsv: meta.label_schema_version,
     $cli: meta.cli_version,
+  });
+}
+
+// ── Debate rounds (judge ensemble audit trail) ────────────────────────────────
+export function upsertJudgeRounds(db: Database, d: DebateResult): void {
+  db.query(
+    `INSERT INTO episode_judge_rounds (episode_id, perspectives_json, rounds_json,
+       n_rounds, converged, consolidator_model, created_at)
+     VALUES ($id,$persp,$rounds,$nr,$conv,$model,$ca)
+     ON CONFLICT(episode_id) DO UPDATE SET
+       perspectives_json=excluded.perspectives_json, rounds_json=excluded.rounds_json,
+       n_rounds=excluded.n_rounds, converged=excluded.converged,
+       consolidator_model=excluded.consolidator_model, created_at=excluded.created_at`
+  ).run({
+    $id: d.episode_id,
+    $persp: JSON.stringify(d.perspectives ?? []),
+    $rounds: JSON.stringify(d.rounds ?? []),
+    $nr: d.n_rounds,
+    $conv: d.converged ? 1 : 0,
+    $model: d.consolidator_model,
+    $ca: new Date().toISOString(),
   });
 }
 

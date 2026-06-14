@@ -101,6 +101,10 @@ bun run check                                # 9 hard invariants, $0
 
 # 2) Judge episodes (real LLM calls — bounded by cost)
 bun run pipeline.ts --max-cost 6 --yes --mine
+#    Critical-stage option: multi-perspective adversarial ENSEMBLE judge
+#    (productivity/accuracy/cost lenses → critique→refute rounds → converge → consolidator;
+#     all rounds saved to episode_judge_rounds). ~8× the calls, far more robust.
+bun run pipeline.ts --judge-debate --judge-rounds 2 --yes --mine
 
 # 3) Trust gate
 bun run src/analysis/calibrate.ts            # interactive human spot-check

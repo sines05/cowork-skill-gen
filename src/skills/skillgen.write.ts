@@ -31,6 +31,16 @@ export function buildSkillMd(draft: Draft, ev: Evidence, gate: GateResult, gener
   fm.push(`  gate_status: ${gate.status}`);
   fm.push(`  generated_at: ${yamlScalar(generatedAt)}`);
   fm.push(`  generated: "true"`);
+  // Skill chaining: declare the network this skill lives in (depends_on / followed_by /
+  // see_also) so a downstream agent can route work it can't do itself.
+  if (draft.related_skills.length) {
+    fm.push(`  related_skills:`);
+    for (const r of draft.related_skills) {
+      fm.push(`    - name: ${r.name}`);
+      fm.push(`      relation: ${r.relation}`);
+      if (r.why) fm.push(`      why: ${yamlScalar(r.why)}`);
+    }
+  }
   fm.push("---");
 
   // Body: scrub once more on write (defense in depth — Gate may have only warned).
@@ -46,14 +56,21 @@ export function buildSkillMd(draft: Draft, ev: Evidence, gate: GateResult, gener
   }
   if (draft.scripts.length) {
     extra.push("", "## Bundled scripts",
-      ...draft.scripts.map((s) => `- \`scripts/${s.filename}\` (${s.language})`));
+      ...draft.scripts.map((s) => `- \`scripts/${s.filename}\` (${s.language}) — deterministic; prefer running this over re-deriving the steps by hand.`));
   }
-  extra.push(
-    "", "---",
-    `_Auto-drafted by cowork-workflow-miner from ${ev.frequency} episode(s) across ` +
-      `${ev.n_sessions} session(s); success rate ${(ev.success_rate * 100).toFixed(0)}%. ` +
-      `Gate 2-A: ${gate.status}. Review before use._`
-  );
+  if (draft.references.length) {
+    extra.push("", "## References",
+      ...draft.references.map((r) => `- \`references/${r.filename}\` — load on demand for this capability's detail.`));
+  }
+  // Skill chaining (human-visible mirror of the frontmatter): one network so the skill
+  // knows what to reach for when it hits the edge of its own competence.
+  if (draft.related_skills.length) {
+    extra.push("", "## Related skills",
+      ...draft.related_skills.map((r) => `- **${r.name}** (${r.relation})${r.why ? ` — ${r.why}` : ""}`));
+  }
+  // NOTE: deliberately NO "auto-drafted from N episodes / success rate" footer here.
+  // A skill answers "when/how to use me", not "the history/stats of how I was created" —
+  // that provenance lives in meta.json, not in the skill an agent reads at runtime.
 
   return fm.join("\n") + "\n\n" + body + "\n" + extra.join("\n") + "\n";
 }
@@ -102,6 +119,7 @@ export function writeSkillFolder(
         artifact_type: draft.artifact_type,
         confidence: draft.confidence,
         gate: gate,
+        related_skills: draft.related_skills,
         citations: draft.citations,
         evidence_summary: {
           frequency: ev.frequency,

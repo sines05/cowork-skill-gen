@@ -21,7 +21,7 @@ import type {
 } from "../core/types.ts";
 import { LABEL_SCHEMA_VERSION } from "../core/types.ts";
 import { sha256 } from "../core/util.ts";
-import { runnerEnv, describeRunner } from "../llm/runner.ts";
+import { runnerEnv, describeRunner, resolveBin } from "../llm/runner.ts";
 import { join } from "path";
 import { promptsDir } from "../core/paths.ts";
 
@@ -71,7 +71,7 @@ let _cliVersionCache: string | null = null;
 export async function getCliVersion(): Promise<string> {
   if (_cliVersionCache !== null) return _cliVersionCache;
   try {
-    const proc = Bun.spawn(["claude", "--version"], {
+    const proc = Bun.spawn([resolveBin("claude"), "--version"], {
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -97,7 +97,7 @@ export async function runClaudeP(
   opts?: { model?: string; timeoutMs?: number }
 ): Promise<string> {
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const args = ["claude", "-p", "--output-format", "json"];
+  const args = [resolveBin("claude"), "-p", "--output-format", "json"];
   if (opts?.model) args.push("--model", opts.model);
 
   const proc = Bun.spawn(args, {
@@ -317,7 +317,8 @@ function validateLabel(obj: any, episodeId: string): JudgeLabel {
 }
 
 // Parse + validate one adapter response into a JudgeLabel, or throw.
-function parseAndValidate(result: string, episodeId: string): JudgeLabel {
+// Exported so the debate consolidator (judge.debate.ts) reuses the SAME validation.
+export function parseAndValidate(result: string, episodeId: string): JudgeLabel {
   const jsonStr = extractJsonObject(result);
   if (jsonStr === null) {
     throw new Error("no JSON object found in model response");

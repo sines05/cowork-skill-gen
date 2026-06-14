@@ -192,8 +192,12 @@ async function main() {
     let draft: Draft;
     try {
       // Windows/headless: --runner api uses the HTTP Messages API (no `claude` CLI).
-      const callLlm = flags.runner === "api" ? runApi : runClaudeP;
-      const raw = await callLlm(buildPrompt(evidence), { model });
+      // Heavy clusters (lots of evidence) blow past the 120s default on slow models, so
+      // give the CLI path a generous timeout.
+      const raw =
+        flags.runner === "api"
+          ? await runApi(buildPrompt(evidence), { model })
+          : await runClaudeP(buildPrompt(evidence), { model, timeoutMs: 300_000 });
       const jsonStr = extractJsonObject(raw);
       if (!jsonStr) throw new Error("no JSON object in model response");
       draft = validateDraft(JSON.parse(jsonStr), cand);

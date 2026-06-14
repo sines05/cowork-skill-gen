@@ -2,10 +2,12 @@
 //
 // The miner was born reading Claude Code CLI transcripts (`~/.claude/projects/<dir>/
 // <sessionId>.jsonl`). The real target is **Claude Cowork** logs, which live elsewhere
-// and in a different on-disk shape (Windows `%LOCALAPPDATA%\Claude-3p\…`,
-// `local_<uuid>.json`). Rather than hardcode one layout, every reader goes through a
-// `SessionSource`: discover sessions + read one session's events as `RawEvent[]`. The
-// rest of the pipeline (classify → judge → skillgen) is source-agnostic.
+// and in a different on-disk shape (Windows MSIX package →
+// `…\Packages\Claude_<hash>\LocalCache\Roaming\Claude\local-agent-mode-sessions\…\audit.jsonl`,
+// the Agent-SDK stream-json shape; see docs/COWORK_STORAGE.md). Rather than hardcode one
+// layout, every reader goes through a `SessionSource`: discover sessions + read one
+// session's events as `RawEvent[]`, normalized to the canonical shape. The rest of the
+// pipeline (classify → judge → skillgen) is source-agnostic.
 //
 // Select the source with `--source <name>` / `MINER_SOURCE` (default: claude-code).
 
@@ -33,8 +35,9 @@ export const claudeCodeSource: SessionSource = {
   read: (session) => readEvents(session.jsonlPath),
 };
 
-// Claude Cowork desktop logs (Windows). Adapter is a documented stub until a real
-// `local_<uuid>.json` sample fixes the conversation schema — see cowork.ts.
+// Claude Cowork desktop logs (Windows/macOS). Reads each session's `audit.jsonl`
+// transcript and normalizes the stream-json events to RawEvent — verified against real
+// logs, see cowork.ts / docs/COWORK_STORAGE.md.
 export const coworkSource: SessionSource = {
   name: "cowork",
   discover: (opts) => discoverCoworkSessions(opts),

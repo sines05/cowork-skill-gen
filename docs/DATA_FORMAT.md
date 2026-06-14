@@ -75,6 +75,29 @@ matching on agentId where derivable; otherwise fall back to ordering / the meta.
 `description`. v1 only needs a COMPACT summary (agentType, description, tool count,
 outcome) attached to the parent episode — not the full nested transcript.
 
+## Cowork source (`--source cowork`)
+The CLI schema above is the **canonical** event shape. Claude **Cowork** stores its transcript
+differently — `…\local-agent-mode-sessions\<g>\<c>\local_<task>\audit.jsonl`, one Agent-SDK
+**stream-json** object per line, with an `_audit_hmac` per line (see `docs/COWORK_STORAGE.md`
+for the full storage map). `src/ingest/cowork.ts` discovers these via the sibling
+`local_<task>.json` metadata (title → project, `cwd`, `model`, `emailAddress`, epoch-ms
+timestamps) and `normalizeAuditEvent()` maps each line onto the canonical RawEvent so the rest
+of the pipeline is unchanged. The field remaps that matter:
+
+| Canonical (CLI) | Cowork `audit.jsonl` |
+|---|---|
+| `sessionId` | `session_id` (overridden with the task id for stable joins) |
+| `parentUuid` | `parent_tool_use_id` |
+| `timestamp` | `timestamp` ?? `_audit_timestamp` (human/assistant lines have only the latter) |
+| `toolUseResult` | `tool_use_result` |
+| `system/turn_duration` → `durationMs` | terminal `result.duration_ms` (+ `num_turns`, `total_cost_usd`) |
+
+`assistant.message.content[]` (`tool_use` parts) and `user` `tool_result` parts are already in
+the canonical shape, so `isHumanTurn`, tool extraction, and signals work as-is. Verified
+end-to-end on real sessions (4 sessions → human prompts, MCP tool sequences, durations all
+extracted). Note `discover.ts`'s standalone CLI smoke lists only Claude Code sessions; use the
+`cowork` **source** (`bun run pipeline.ts --source cowork`) to mine Cowork.
+
 ## Tooling notes
 - Runtime: Bun 1.3.14. Use `bun:sqlite`, `Bun.file`, `Bun.spawn`.
 - `claude` CLI. `claude -p --output-format json` → JSON whose `.result` field holds the
