@@ -1,0 +1,10 @@
+node_modules/
+*.db
+*.db-shm
+*.db-wal
+out/
+dist/
+bi/mb-data/
+bi/data/
+*.log
+.DS_Store

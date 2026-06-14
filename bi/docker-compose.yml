@@ -1,0 +1,38 @@
+# Metabase — the leadership BI layer, pointed at the miner's analysis.db.
+#
+# This is the PRESENTATION layer (separate from the Bun mining engine). On a central
+# analytics server you run this once; leadership opens http://<host>:3000 and explores
+# self-serve. Auth, scheduled reports, sharing and embedding are built in.
+#
+# Setup:
+#   1)  bun run views                 # (re)create BI views + fold WAL into analysis.db
+#   2)  cd bi && docker compose up -d
+#   3)  open http://localhost:3000 → finish the wizard
+#   4)  Add database → SQLite → file path: /data/analysis.db
+#   5)  Build dashboards off v_episode_full / v_task_type_summary / v_outcome_distribution
+#       / v_calibration / v_skill_drafts
+#
+# At this scale SQLite is fine. For a production fleet, point the miner at Postgres
+# (swap bun:sqlite for a pg client) and connect Metabase to Postgres instead — no
+# dashboard rework, just a different data-source connection.
+
+services:
+  metabase:
+    image: metabase/metabase:latest
+    container_name: cowork-metabase
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./mb-data:/metabase-data                # Metabase's own app DB (persisted)
+      - ./data:/data                            # writable snapshot dir (bun run bi:refresh)
+                                                # SQLite needs to write a journal even to read,
+                                                # so the data source must be on a writable mount.
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+      JAVA_TIMEZONE: Asia/Ho_Chi_Minh
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+    restart: unless-stopped

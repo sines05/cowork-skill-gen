@@ -1,0 +1,33 @@
+{
+  "name": "cowork-skill-gen",
+  "version": "0.1.0",
+  "description": "Cowork Skill Factory — mine real Claude Cowork/Code sessions, find good/bad workflows, and auto-draft spec-compliant Agent Skills",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "discover": "bun run src/ingest/discover.ts",
+    "classify": "bun run src/pipeline/classify.ts",
+    "pipeline": "bun run pipeline.ts",
+    "check": "bun run src/analysis/check.ts",
+    "dump-render": "bun run src/analysis/dump-render.ts",
+    "calibrate": "bun run src/analysis/calibrate.ts",
+    "mine": "bun run src/analysis/mine.ts",
+    "report": "bun run src/analysis/report.ts",
+    "skillgen": "bun run src/skills/skillgen.ts",
+    "skilleval": "bun run src/skills/skilleval.ts",
+    "dashboard": "bun run src/analysis/dashboard.ts",
+    "merge": "bun run src/analysis/merge.ts",
+    "audit": "bun run src/ingest/cowork-audit.ts",
+    "views": "bun run src/analysis/views.ts",
+    "bi:refresh": "bun run bi/refresh.ts",
+    "bi:up": "docker compose -f bi/docker-compose.yml up -d",
+    "bi:down": "docker compose -f bi/docker-compose.yml down",
+    "bi:provision": "bun run bi/provision.ts",
+    "redact": "bun run src/core/redact.ts",
+    "build:win": "bun build ./pipeline.ts --compile --target=bun-windows-x64 --outfile dist/cowork-miner-win.exe",
+    "build:linux": "bun build ./pipeline.ts --compile --target=bun-linux-x64 --outfile dist/cowork-miner"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
