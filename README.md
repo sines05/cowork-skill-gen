@@ -26,10 +26,8 @@ flowchart TD
     C --> P["7 · Privacy / redaction ✅"]
 
     classDef done fill:#d4f4dd,stroke:#2a8;
-    classDef wip fill:#fff3cd,stroke:#ca0;
     classDef todo fill:#eef,stroke:#88a;
-    class C,M,G,B,P done;
-    class Q done;
+    class C,M,G,Q,B,P done;
     class D,V todo;
 ```
 
@@ -47,17 +45,18 @@ for the critical decision; LLM calls are **model-tiered** (cheap for discovery, 
 
 ```mermaid
 flowchart LR
-    A["discover<br/>(source adapter)"] --> B["classify<br/>turn roles"]
+    A["discover<br/>Cowork · Code"] --> B["classify<br/>turns"]
     B --> C["segment<br/>episodes"]
     C --> D["signals +<br/>subagents"]
     D --> E["render<br/>≤12k chars"]
-    E --> F["judge<br/>(LLM)"]
+    E --> F["judge LLM<br/>single · debate"]
     F --> DB[("SQLite")]
-    DB --> H["mine<br/>cluster + good/bad"]
-    DB --> I["calibrate<br/>trust gate"]
-    H --> J["skillgen<br/>+ Gate 2-A"]
-    J --> K["skilleval<br/>Gate 2-B"]
-    H --> L["report · dashboard"]
+    DB --> I["calibrate<br/>Gate 1"]
+    DB --> H["mine<br/>cluster · good/bad"]
+    H --> J["skillgen<br/>Gate 2-A"]
+    J --> K["skillcheck<br/>quality gate"]
+    K --> L["skilleval<br/>Gate 2-B + telemetry"]
+    H --> R["report ·<br/>dashboard"]
 ```
 
 **Everything is redacted at the boundary** (`src/core/redact.ts`) before any text reaches an LLM
@@ -73,13 +72,13 @@ it. So every claim passes a gate:
 
 ```mermaid
 flowchart TD
-    logs["real sessions"] --> mine["Mine + judge"]
-    mine --> g1{"Go/Kill 1<br/>calibration:<br/>judge vs human"}
-    g1 -->|trusted| cand["Ranked skill candidates"]
-    cand --> gen["Generate skill (grounded)"]
-    gen --> g2a{"Gate 2-A<br/>static: spec, grounding,<br/>anti-hardcode, safety"}
-    g2a -->|pass| g2b{"Gate 2-B<br/>back-test:<br/>with-skill vs baseline"}
-    g2b -->|real uplift| deploy["Deploy to Cowork"]
+    logs["real sessions"] --> mine["mine + judge"]
+    mine --> g1{"Gate 1<br/>calibration:<br/>judge vs human"}
+    g1 -->|trusted| cand["ranked candidates"]
+    cand --> gen["generate skill<br/>(grounded)"]
+    gen --> g2a{"Gate 2-A<br/>static: spec · grounding ·<br/>anti-hardcode · safety"}
+    g2a -->|pass| g2b{"Gate 2-B<br/>back-test: golden +<br/>LLM, with vs without"}
+    g2b -->|real uplift| deploy["deploy to Cowork"]
     deploy -->|new logs| logs
 ```
 
@@ -144,13 +143,13 @@ fallback** (air-gapped / single-`.exe`). See [`bi/README.md`](bi/README.md).
 
 ```mermaid
 flowchart LR
-    subgraph fleet["Employee machines (Windows + Cowork)"]
-      j["local_uuid.json + audit.jsonl"]
+    subgraph fleet["Employee machines · Windows + Cowork"]
+      j["audit.jsonl<br/>(+ local_task.json)"]
     end
-    fleet -->|collect + redact| db[("central analysis.db")]
-    db --> miner["Bun miner / skill-gen"]
-    miner --> mb["Metabase dashboard"]
-    miner --> sk["generated skills"]
+    fleet -->|collect + redact| db[("central<br/>analysis.db")]
+    db --> miner["Bun miner /<br/>skill-gen"]
+    miner --> mb["Metabase<br/>dashboard"]
+    miner --> sk["generated<br/>skills"]
     sk -->|deploy| fleet
 ```
 
