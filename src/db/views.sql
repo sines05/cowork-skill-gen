@@ -88,3 +88,72 @@ SELECT name, cluster_id, artifact_type, gate_status, confidence,
        substr(description, 1, 160) AS description, generated_at
 FROM skill_drafts
 ORDER BY confidence DESC;
+
+-- ── LLM spend (the pipeline's OWN cost — how much we spent mining) ──────────────
+-- All derived from llm_calls (loaded from out/telemetry/llm_calls.jsonl). Distinct from
+-- episode tokens (the work analyzed); see v_workload_tokens for that.
+
+-- One headline row for the scalar cards.
+DROP VIEW IF EXISTS v_llm_cost_total;
+CREATE VIEW v_llm_cost_total AS
+SELECT
+  COUNT(*)                                              AS calls,
+  ROUND(COALESCE(SUM(cost_usd), 0), 4)                  AS cost_usd,
+  COALESCE(SUM(input_tokens), 0)                        AS input_tokens,
+  COALESCE(SUM(output_tokens), 0)                       AS output_tokens,
+  COALESCE(SUM(input_tokens + output_tokens), 0)        AS total_tokens,
+  COALESCE(SUM(cache_read_tokens), 0)                   AS cache_read_tokens
+FROM llm_calls;
+
+-- Spend grouped by pipeline phase (judge / skillgen / skilleval / classify / mine).
+DROP VIEW IF EXISTS v_llm_cost_by_phase;
+CREATE VIEW v_llm_cost_by_phase AS
+SELECT
+  COALESCE(phase, 'other')                              AS phase,
+  COUNT(*)                                              AS calls,
+  ROUND(COALESCE(SUM(cost_usd), 0), 4)                  AS cost_usd,
+  COALESCE(SUM(input_tokens), 0)                        AS input_tokens,
+  COALESCE(SUM(output_tokens), 0)                       AS output_tokens,
+  COALESCE(SUM(input_tokens + output_tokens), 0)        AS total_tokens,
+  SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END)               AS failed_calls
+FROM llm_calls
+GROUP BY COALESCE(phase, 'other')
+ORDER BY cost_usd DESC;
+
+-- Spend grouped by model (which tier is eating the budget).
+DROP VIEW IF EXISTS v_llm_cost_by_model;
+CREATE VIEW v_llm_cost_by_model AS
+SELECT
+  COALESCE(model, 'unknown')                            AS model,
+  COUNT(*)                                              AS calls,
+  ROUND(COALESCE(SUM(cost_usd), 0), 4)                  AS cost_usd,
+  COALESCE(SUM(input_tokens + output_tokens), 0)        AS total_tokens
+FROM llm_calls
+GROUP BY COALESCE(model, 'unknown')
+ORDER BY cost_usd DESC;
+
+-- Spend over time (one row per day) for a trend line.
+DROP VIEW IF EXISTS v_llm_cost_by_day;
+CREATE VIEW v_llm_cost_by_day AS
+SELECT
+  substr(at, 1, 10)                                     AS day,
+  COUNT(*)                                              AS calls,
+  ROUND(COALESCE(SUM(cost_usd), 0), 4)                  AS cost_usd,
+  COALESCE(SUM(input_tokens + output_tokens), 0)        AS total_tokens
+FROM llm_calls
+WHERE at IS NOT NULL
+GROUP BY substr(at, 1, 10)
+ORDER BY day;
+
+-- Workload analyzed (token volume of the SESSIONS being mined — context, not our spend).
+DROP VIEW IF EXISTS v_workload_tokens;
+CREATE VIEW v_workload_tokens AS
+SELECT
+  COALESCE(s.source, 'local')                           AS source_machine,
+  COUNT(*)                                              AS episodes,
+  COALESCE(SUM(f.tokens), 0)                            AS session_tokens
+FROM episodes e
+LEFT JOIN sessions s          ON s.session_id = e.session_id
+LEFT JOIN episode_features f  ON f.episode_id = e.episode_id
+GROUP BY COALESCE(s.source, 'local')
+ORDER BY session_tokens DESC;

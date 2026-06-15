@@ -11,6 +11,8 @@
 //   ANTHROPIC_AUTH_TOKEN         → sent as `Authorization: Bearer` (gateway/ccs style)
 // Base URL: ANTHROPIC_BASE_URL or https://api.anthropic.com.
 
+import { recordLlmCall, estimateCostUsd } from "./runner.ts";
+
 const DEFAULT_BASE = "https://api.anthropic.com";
 const API_VERSION = "2023-06-01";
 const DEFAULT_MODEL = "claude-opus-4-8";
@@ -65,6 +67,19 @@ export async function runApiMessage(prompt: string, opts?: ApiOpts): Promise<str
     throw new Error(`Anthropic API ${res.status} ${res.statusText}: ${txt.slice(0, 300)}`);
   }
   const data: any = await res.json();
+  // Ledger the spend. The API returns usage but no dollar cost, so estimate it.
+  const u = data?.usage ?? {};
+  const inTok = u.input_tokens ?? 0;
+  const outTok = u.output_tokens ?? 0;
+  recordLlmCall({
+    model,
+    input_tokens: inTok,
+    output_tokens: outTok,
+    cache_read_tokens: u.cache_read_input_tokens,
+    cache_creation_tokens: u.cache_creation_input_tokens,
+    cost_usd: estimateCostUsd(model, inTok, outTok),
+    ok: true,
+  });
   const text = Array.isArray(data?.content)
     ? data.content.filter((b: any) => b?.type === "text").map((b: any) => b.text).join("")
     : "";

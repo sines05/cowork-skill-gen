@@ -29,8 +29,15 @@ async function j(method: string, path: string, body?: unknown, session?: string)
 }
 
 // Native-SQL cards (no field-id wrangling) + grid layout (24-col Metabase grid).
+// Laid out in clearly separated bands so the dashboard reads top-to-bottom:
+//   row 0  — Overview KPIs        (4 scalars)
+//   row 3  — Cost & tokens KPIs   (4 scalars)  ← the pipeline's OWN spend
+//   row 6  — Cost & tokens charts (by phase / model / day)
+//   row 18 — Outcomes             (distribution + success by task)
+//   row 24 — Output               (episodes by project + generated skills)
 const DASH_NAME = "Cowork — Leadership";
 const CARDS = [
+  // ── Overview KPIs ───────────────────────────────────────────────────────────
   { key: "episodes", name: "Total episodes", display: "scalar", col: 0, row: 0, w: 6, h: 3,
     sql: "SELECT COUNT(*) AS episodes FROM v_episode_full" },
   { key: "judged", name: "Judged episodes", display: "scalar", col: 6, row: 0, w: 6, h: 3,
@@ -39,13 +46,37 @@ const CARDS = [
     sql: "SELECT ROUND(100.0*SUM(is_success)/NULLIF(SUM(CASE WHEN outcome IN ('success','partial','failed','abandoned') THEN 1 ELSE 0 END),0),0) AS success_pct FROM v_episode_full" },
   { key: "agree", name: "Judge↔human agreement %", display: "scalar", col: 18, row: 0, w: 6, h: 3,
     sql: "SELECT ROUND(100.0*SUM(CASE WHEN agrees=1 THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0),0) AS agreement_pct FROM v_calibration" },
-  { key: "outcome", name: "Outcome distribution", display: "pie", col: 0, row: 3, w: 8, h: 6,
+
+  // ── Cost & tokens KPIs (pipeline's own LLM spend) ────────────────────────────
+  { key: "spend", name: "LLM spend ($)", display: "scalar", col: 0, row: 3, w: 6, h: 3,
+    sql: "SELECT cost_usd FROM v_llm_cost_total" },
+  { key: "tokens", name: "Total tokens (in+out)", display: "scalar", col: 6, row: 3, w: 6, h: 3,
+    sql: "SELECT total_tokens FROM v_llm_cost_total" },
+  { key: "calls", name: "LLM calls", display: "scalar", col: 12, row: 3, w: 6, h: 3,
+    sql: "SELECT calls FROM v_llm_cost_total" },
+  { key: "workload", name: "Session tokens analyzed", display: "scalar", col: 18, row: 3, w: 6, h: 3,
+    sql: "SELECT COALESCE(SUM(session_tokens),0) AS session_tokens FROM v_workload_tokens" },
+
+  // ── Cost & tokens charts ─────────────────────────────────────────────────────
+  { key: "cost_phase", name: "Cost by phase ($)", display: "bar", col: 0, row: 6, w: 12, h: 6,
+    sql: "SELECT phase, cost_usd FROM v_llm_cost_by_phase" },
+  { key: "cost_model", name: "Cost by model ($)", display: "pie", col: 12, row: 6, w: 12, h: 6,
+    sql: "SELECT model, cost_usd FROM v_llm_cost_by_model" },
+  { key: "cost_day", name: "Cost over time ($/day)", display: "line", col: 0, row: 12, w: 12, h: 6,
+    sql: "SELECT day, cost_usd FROM v_llm_cost_by_day" },
+  { key: "tok_phase", name: "Tokens by phase", display: "bar", col: 12, row: 12, w: 12, h: 6,
+    sql: "SELECT phase, total_tokens FROM v_llm_cost_by_phase" },
+
+  // ── Outcomes ──────────────────────────────────────────────────────────────────
+  { key: "outcome", name: "Outcome distribution", display: "pie", col: 0, row: 18, w: 8, h: 6,
     sql: "SELECT outcome, n FROM v_outcome_distribution" },
-  { key: "bytask", name: "Success % by task type", display: "row", col: 8, row: 3, w: 16, h: 6,
+  { key: "bytask", name: "Success % by task type", display: "row", col: 8, row: 18, w: 16, h: 6,
     sql: "SELECT task_type, success_pct FROM v_task_type_summary WHERE judged > 0 ORDER BY success_pct DESC LIMIT 15" },
-  { key: "byproject", name: "Episodes by project", display: "bar", col: 0, row: 9, w: 12, h: 6,
+
+  // ── Output ──────────────────────────────────────────────────────────────────
+  { key: "byproject", name: "Episodes by project", display: "bar", col: 0, row: 24, w: 12, h: 6,
     sql: "SELECT project, COUNT(*) AS episodes FROM v_episode_full GROUP BY project ORDER BY episodes DESC" },
-  { key: "skills", name: "Generated skills", display: "table", col: 12, row: 9, w: 12, h: 6,
+  { key: "skills", name: "Generated skills", display: "table", col: 12, row: 24, w: 12, h: 6,
     sql: "SELECT name, artifact_type, gate_status, confidence FROM v_skill_drafts" },
 ];
 
@@ -58,16 +89,22 @@ async function buildDashboard(session: string, dbId: number) {
   );
   const idByKey: Record<string, number> = {};
   for (const c of CARDS) {
+    const query = { database: dbId, type: "native", native: { query: c.sql } };
     let id = byName.get(c.name);
     if (!id) {
       const r = await j("POST", "/api/card", {
-        name: c.name,
-        display: c.display,
-        dataset_query: { database: dbId, type: "native", native: { query: c.sql } },
-        visualization_settings: {},
+        name: c.name, display: c.display, dataset_query: query, visualization_settings: {},
       }, session);
       if (!r.ok) { console.log(`  card '${c.name}' failed: ${JSON.stringify(r.data).slice(0, 120)}`); continue; }
       id = r.data.id;
+    } else {
+      // Re-point an existing card at the CURRENT data source + SQL. Without this, a card
+      // created against a previous data-source id (e.g. after re-adding the DB → new id)
+      // keeps querying the stale source and renders empty — exactly the "no cost shows up"
+      // symptom even though the data is present.
+      await j("PUT", `/api/card/${id}`, {
+        name: c.name, display: c.display, dataset_query: query,
+      }, session);
     }
     if (id) idByKey[c.key] = id;
   }
@@ -144,7 +181,8 @@ async function main() {
   // 4) Verify the BI views are visible.
   const meta = await j("GET", `/api/database/${db.id}/metadata`, undefined, session);
   const tables: string[] = (meta.data?.tables ?? []).map((t: any) => t.name);
-  const want = ["v_episode_full", "v_task_type_summary", "v_outcome_distribution", "v_calibration", "v_skill_drafts"];
+  const want = ["v_episode_full", "v_task_type_summary", "v_outcome_distribution", "v_calibration", "v_skill_drafts",
+    "v_llm_cost_total", "v_llm_cost_by_phase", "v_llm_cost_by_model", "v_llm_cost_by_day", "v_workload_tokens"];
   const seen = want.filter((v) => tables.includes(v));
   console.log(`[provision] data source id=${db.id}; tables visible: ${tables.length}`);
   console.log(`[provision] BI views found: ${seen.length}/${want.length} — ${seen.join(", ") || "(none yet; re-run after sync)"}`);

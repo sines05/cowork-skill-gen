@@ -41,11 +41,14 @@ export function checkSkill(dir: string): { name: string; findings: Finding[] } {
   const bd = body(md);
   const name = fmValue(fm, "name") || basename(dir);
 
-  // structure
+  // structure + Agent Skills spec name rules (agentskills.io/specification)
   if (!fm) findings.push({ level: "FAIL", msg: "missing YAML frontmatter" });
-  if (!NAME_RE.test(name)) findings.push({ level: "FAIL", msg: `name not kebab-case: ${name}` });
+  if (!NAME_RE.test(name) || name.length > 64)
+    findings.push({ level: "FAIL", msg: `name invalid (≤64, [a-z0-9-], no leading/trailing/double hyphen): ${name}` });
+  if (name !== basename(dir))
+    findings.push({ level: "FAIL", msg: `name "${name}" must match parent directory "${basename(dir)}"` });
 
-  // description: present, bounded, and WHEN-oriented (it's the trigger)
+  // description: required, ≤1024, and WHEN-oriented (it's the trigger)
   const desc = fmValue(fm, "description") || "";
   if (!desc) findings.push({ level: "FAIL", msg: "description missing" });
   else {
@@ -54,16 +57,27 @@ export function checkSkill(dir: string): { name: string; findings: Finding[] } {
       findings.push({ level: "WARN", msg: "description not clearly when-to-use (no trigger/when/keywords)" });
   }
 
-  // gate verdict
-  const gate = fmValue(fm, "gate_status");
-  if (!gate) findings.push({ level: "WARN", msg: "no gate_status in metadata" });
-  else if (gate === "reject") findings.push({ level: "FAIL", msg: "gate_status=reject" });
+  // compatibility: optional, but spec-bounded to ≤500 chars when present
+  const compat = fmValue(fm, "compatibility");
+  if (compat && compat.length > 500)
+    findings.push({ level: "FAIL", msg: `compatibility >500 chars (${compat.length})` });
 
-  // chaining (recommended, not required — isolated skills are valid)
-  if (!/^\s*related_skills:/m.test(fm))
-    findings.push({ level: "WARN", msg: "no related_skills (chaining recommended)" });
+  // license frontmatter referencing a file → that file must exist
+  const lic = fmValue(fm, "license") || "";
+  if (/LICENSE/i.test(lic) && !existsSync(join(dir, "LICENSE.txt")))
+    findings.push({ level: "WARN", msg: "license references LICENSE.txt but the file is missing" });
 
-  // creation-history leak — a skill must NOT answer how it was made
+  // dangling bundled-file references — a backticked `scripts|references|assets/<file>`
+  // pointer in the body must resolve to a real file (spec: refs are relative to skill root,
+  // one level deep). A pointer to a missing file sends the agent to a dead end.
+  const refRe = /`(scripts|references|assets)\/([A-Za-z0-9._-]+)`/g;
+  for (const m of bd.matchAll(refRe)) {
+    const rel = `${m[1]}/${m[2]}`;
+    if (!existsSync(join(dir, rel)))
+      findings.push({ level: "FAIL", msg: `body references missing bundled file: ${rel}` });
+  }
+
+  // creation-history leak — a skill must NOT answer how it was made (belongs in meta.json)
   if (/auto-drafted|success rate|\d+\s*episode\(s\)|generated from \d+/i.test(bd))
     findings.push({ level: "FAIL", msg: "creation-history leaked into body (belongs in meta.json)" });
 
@@ -71,14 +85,26 @@ export function checkSkill(dir: string): { name: string; findings: Finding[] } {
   const pii = redactText(md).nRedacted;
   if (pii > 0) findings.push({ level: "FAIL", msg: `${pii} PII-like token(s) present` });
 
-  // evals handoff
+  // meta.json — our provenance sidecar: gate verdict + chaining live here, not in frontmatter
+  const metaPath = join(dir, "meta.json");
+  let meta: any = null;
+  if (existsSync(metaPath)) { try { meta = JSON.parse(readFileSync(metaPath, "utf8")); } catch { /* below */ } }
+  if (!meta) findings.push({ level: "WARN", msg: "no/invalid meta.json (provenance sidecar)" });
+  else {
+    if (meta.gate?.status === "reject") findings.push({ level: "FAIL", msg: "meta.json gate=reject" });
+    if (!Array.isArray(meta.related_skills) || meta.related_skills.length === 0)
+      findings.push({ level: "WARN", msg: "no related_skills (chaining recommended)" });
+  }
+
+  // evals handoff — skill-creator schema (`evals`), tolerate older `test_cases`
   const evalsPath = join(dir, "evals", "evals.json");
   if (!existsSync(evalsPath)) findings.push({ level: "WARN", msg: "no evals/evals.json (back-test handoff)" });
   else {
     try {
       const j = JSON.parse(readFileSync(evalsPath, "utf8"));
-      if (!Array.isArray(j.test_cases) || j.test_cases.length === 0)
-        findings.push({ level: "WARN", msg: "evals.json has no test_cases" });
+      const cases = Array.isArray(j.evals) ? j.evals : j.test_cases;
+      if (!Array.isArray(cases) || cases.length === 0)
+        findings.push({ level: "WARN", msg: "evals.json has no eval cases" });
     } catch {
       findings.push({ level: "FAIL", msg: "evals.json is not valid JSON" });
     }

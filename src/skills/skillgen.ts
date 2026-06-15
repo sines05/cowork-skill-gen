@@ -30,7 +30,7 @@ import { join } from "path";
 import { mine } from "../analysis/mine.ts";
 import { runClaudeP, runApi, getModel } from "../llm/judge.ts";
 import { sha256 } from "../core/util.ts";
-import { configureRunner, describeRunner, type RunnerName } from "../llm/runner.ts";
+import { configureRunner, describeRunner, setLlmPhase, type RunnerName } from "../llm/runner.ts";
 import {
   openDb,
   upsertSkillDraft,
@@ -121,6 +121,7 @@ async function main() {
   const flags = parseFlags(process.argv.slice(2));
   const db = openDb(flags.dbPath);
   configureRunner({ runner: flags.runner, ccsProfile: flags.ccsProfile });
+  setLlmPhase("skillgen"); // attribute all LLM spend in this process to the skillgen bucket
   const model = getModel({ model: flags.model });
   const promptHash = sha256(readSkillgenPrompt());
 

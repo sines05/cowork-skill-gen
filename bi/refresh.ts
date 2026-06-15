@@ -12,6 +12,7 @@ import { Database } from "bun:sqlite";
 import { readFileSync, copyFileSync, mkdirSync, existsSync, chmodSync } from "fs";
 import { join } from "path";
 import { defaultDbPath } from "../src/core/paths.ts";
+import { loadLedgerIntoDb } from "../src/db/llm_ledger.ts";
 
 const VIEWS_SQL = `${import.meta.dir}/../src/db/views.sql`;
 const DATA_DIR = `${import.meta.dir}/data`;
@@ -28,6 +29,9 @@ const cols = db.query(`PRAGMA table_info(sessions)`).all() as { name: string }[]
 if (!cols.some((c) => c.name === "source")) {
   db.exec(`ALTER TABLE sessions ADD COLUMN source TEXT`);
 }
+// Fold the LLM spend ledger into llm_calls before building views (so the snapshot has cost data).
+const loaded = loadLedgerIntoDb(db);
+if (loaded > 0) console.log(`[refresh] loaded ${loaded} new LLM call(s) from the ledger`);
 db.exec(readFileSync(VIEWS_SQL, "utf8"));
 try {
   db.exec(`PRAGMA wal_checkpoint(TRUNCATE)`);

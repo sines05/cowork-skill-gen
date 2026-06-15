@@ -2,7 +2,7 @@
 // new_task boundaries, used by classify.ts behind opts.classifyLlm.
 import { join } from "path";
 import type { TurnRole } from "../core/types.ts";
-import { runnerEnv, resolveBin, modelTier } from "../llm/runner.ts";
+import { runnerEnv, resolveBin, modelTier, recordFromEnvelope } from "../llm/runner.ts";
 import { promptsDir } from "../core/paths.ts";
 
 // ── Optional LLM batch pass ───────────────────────────────────────────────────
@@ -59,6 +59,7 @@ export async function runClassifyLlm(
     clearTimeout(timer);
 
     const envelope = JSON.parse(out);
+    recordFromEnvelope(envelope, modelTier("cheap"));
     const inner = typeof envelope?.result === "string" ? envelope.result : out;
     // tolerate code fences / surrounding prose: grab the first JSON array
     const match = inner.match(/\[[\s\S]*\]/);

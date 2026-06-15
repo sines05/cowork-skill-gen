@@ -2,7 +2,7 @@
 //
 // Builds spec-compliant YAML frontmatter + body (scrubbed once more on write,
 // defense in depth) and lays out the folder: SKILL.md, scripts/, references/,
-// evals/evals.json, meta.json.
+// assets/, evals/evals.json, meta.json.
 
 import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
@@ -11,36 +11,28 @@ import type { Draft } from "./skillgen.draft.ts";
 import type { Evidence } from "./skillgen.evidence.ts";
 import type { GateResult } from "./skillgen.gate.ts";
 
+// Bundled license, referenced by the SKILL.md `license` frontmatter (mirrors how Anthropic's
+// own skills ship a LICENSE.txt). Adjust the holder/terms to your org's policy.
+const LICENSE_TEXT = `Proprietary — internal use only.
+
+This skill was auto-drafted by the Cowork Skill Factory from mined session evidence and
+is intended for internal review and use. Do not redistribute without authorization.
+All rights reserved.
+`;
+
 // ── YAML frontmatter (safe single-line scalars) ──────────────────────────────
 export function yamlScalar(s: string): string {
   // double-quote and escape; collapse newlines so the scalar stays single-line.
   return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ").trim() + '"';
 }
 
-export function buildSkillMd(draft: Draft, ev: Evidence, gate: GateResult, generatedAt: string): string {
-  const fm: string[] = ["---"];
-  fm.push(`name: ${draft.name}`);
-  fm.push(`description: ${yamlScalar(draft.description)}`);
+export function buildSkillMd(draft: Draft): string {
+  // Frontmatter follows skill-creator's CANONICAL minimal form: just `name` + `description`
+  // (+ `compatibility` only when there are real tool/OS requirements). All provenance, gate
+  // status, confidence and chaining live in meta.json — never in the skill an agent reads.
+  const fm: string[] = ["---", `name: ${draft.name}`, `description: ${yamlScalar(draft.description)}`];
+  fm.push(`license: Proprietary. LICENSE.txt has complete terms`);
   if (draft.compatibility) fm.push(`compatibility: ${yamlScalar(draft.compatibility)}`);
-  fm.push(`license: Proprietary`);
-  fm.push(`metadata:`);
-  fm.push(`  source: cowork-workflow-miner`);
-  fm.push(`  cluster_id: ${yamlScalar(ev.cluster_id)}`);
-  fm.push(`  artifact_type: ${draft.artifact_type}`);
-  fm.push(`  confidence: ${yamlScalar(String(draft.confidence))}`);
-  fm.push(`  gate_status: ${gate.status}`);
-  fm.push(`  generated_at: ${yamlScalar(generatedAt)}`);
-  fm.push(`  generated: "true"`);
-  // Skill chaining: declare the network this skill lives in (depends_on / followed_by /
-  // see_also) so a downstream agent can route work it can't do itself.
-  if (draft.related_skills.length) {
-    fm.push(`  related_skills:`);
-    for (const r of draft.related_skills) {
-      fm.push(`    - name: ${r.name}`);
-      fm.push(`      relation: ${r.relation}`);
-      if (r.why) fm.push(`      why: ${yamlScalar(r.why)}`);
-    }
-  }
   fm.push("---");
 
   // Body: scrub once more on write (defense in depth — Gate may have only warned).
@@ -62,6 +54,10 @@ export function buildSkillMd(draft: Draft, ev: Evidence, gate: GateResult, gener
     extra.push("", "## References",
       ...draft.references.map((r) => `- \`references/${r.filename}\` — load on demand for this capability's detail.`));
   }
+  if (draft.assets.length) {
+    extra.push("", "## Assets",
+      ...draft.assets.map((a) => `- \`assets/${a.filename}\` — template/resource to apply when producing the output.`));
+  }
   // Skill chaining (human-visible mirror of the frontmatter): one network so the skill
   // knows what to reach for when it hits the edge of its own competence.
   if (draft.related_skills.length) {
@@ -76,30 +72,13 @@ export function buildSkillMd(draft: Draft, ev: Evidence, gate: GateResult, gener
 }
 
 // A skill is "isolated" when it has no `depends_on` prerequisite — it can run standalone.
-// Leadership rec: isolated skills should get their own sub-agent so they execute in a
-// dedicated context. Chained skills (depends_on something) need orchestration, not isolation.
+// Leadership rec: isolated skills can execute in a dedicated context with a chosen model
+// tier. We DON'T duplicate SKILL.md into an agent.md to express this (that file is just the
+// body restated, and it sits in the wrong place for Claude Code to discover it as a real
+// sub-agent — those live in .claude/agents/). The intent is recorded as metadata in
+// meta.json instead; an orchestrator reads it to decide isolation + model.
 export function isIsolated(draft: Draft): boolean {
   return !draft.related_skills.some((r) => r.relation === "depends_on");
-}
-
-// A Claude Code sub-agent definition that runs THIS skill standalone. Model tier =
-// "sonnet" (implementation with a clear plan is enough — per the tiering guidance; the
-// expensive judging/review tiers are for the mining pipeline, not skill execution).
-export function buildAgentMd(draft: Draft): string {
-  const fm = [
-    "---",
-    `name: ${draft.name}`,
-    `description: ${yamlScalar(draft.description)}`,
-    `model: sonnet`,
-    "---",
-  ];
-  const body =
-    `You are a focused sub-agent that performs exactly one capability: **${draft.name}**.\n\n` +
-    `Apply the skill below. Stay in scope; if the task needs a capability this skill does ` +
-    `not cover, say so and hand back rather than improvising.\n\n` +
-    `---\n\n` +
-    redactText(draft.skill_body_markdown).text;
-  return fm.join("\n") + "\n\n" + body + "\n";
 }
 
 // ── Write the skill folder ───────────────────────────────────────────────────
@@ -115,7 +94,9 @@ export function writeSkillFolder(
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
   mkdirSync(dir, { recursive: true });
 
-  writeFileSync(join(dir, "SKILL.md"), buildSkillMd(draft, ev, gate, generatedAt), "utf8");
+  writeFileSync(join(dir, "SKILL.md"), buildSkillMd(draft), "utf8");
+  // LICENSE.txt — referenced by the `license` frontmatter, matching Anthropic's own skills.
+  writeFileSync(join(dir, "LICENSE.txt"), LICENSE_TEXT, "utf8");
 
   if (draft.scripts.length) {
     mkdirSync(join(dir, "scripts"), { recursive: true });
@@ -129,16 +110,32 @@ export function writeSkillFolder(
       writeFileSync(join(dir, "references", r.filename), redactText(r.markdown).text, "utf8");
     }
   }
-  // Isolated skill → bundle a sub-agent definition so it can run in its own context.
-  if (isIsolated(draft)) {
-    writeFileSync(join(dir, "agent.md"), buildAgentMd(draft), "utf8");
+  if (draft.assets.length) {
+    mkdirSync(join(dir, "assets"), { recursive: true });
+    for (const a of draft.assets) {
+      writeFileSync(join(dir, "assets", a.filename), redactText(a.content).text, "utf8");
+    }
   }
-
-  // evals/evals.json — handoff to the Gate 2-B back-test.
+  // evals/evals.json — skill-creator's canonical schema ({skill_name, evals:[{id, prompt,
+  // expected_output, expectations, files}]}) + our deterministic `checks` extension.
   mkdirSync(join(dir, "evals"), { recursive: true });
   writeFileSync(
     join(dir, "evals", "evals.json"),
-    JSON.stringify({ skill: draft.name, test_cases: draft.evals }, null, 2),
+    JSON.stringify(
+      {
+        skill_name: draft.name,
+        evals: draft.evals.map((e, i) => ({
+          id: i + 1,
+          prompt: e.prompt,
+          expected_output: e.expected_output,
+          expectations: e.expectations,
+          files: [],
+          checks: e.checks,
+        })),
+      },
+      null,
+      2
+    ),
     "utf8"
   );
   // meta.json — provenance + gate result.
@@ -151,6 +148,10 @@ export function writeSkillFolder(
         artifact_type: draft.artifact_type,
         confidence: draft.confidence,
         gate: gate,
+        // Execution hint (replaces the old duplicated agent.md): an orchestrator reads this
+        // to decide whether to run the skill in its own context and at which model tier.
+        // Isolated = no depends_on prerequisite; chained skills need orchestration instead.
+        execution: { isolated: isIsolated(draft), recommended_model: "sonnet" },
         related_skills: draft.related_skills,
         citations: draft.citations,
         evidence_summary: {

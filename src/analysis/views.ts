@@ -9,6 +9,7 @@
 import { Database } from "bun:sqlite";
 import { readFileSync, existsSync } from "fs";
 import { defaultDbPath } from "../core/paths.ts";
+import { loadLedgerIntoDb } from "../db/llm_ledger.ts";
 
 const SCHEMA_VIEWS = `${import.meta.dir}/../db/views.sql`;
 
@@ -34,6 +35,10 @@ function main() {
   }
   const db = new Database(dbPath); // read-write: we create views + checkpoint
   ensureSourceColumn(db);
+
+  // Fold the LLM spend ledger into the llm_calls table so the cost/token views have data.
+  const loaded = loadLedgerIntoDb(db);
+  if (loaded > 0) console.log(`[views] loaded ${loaded} new LLM call(s) from the ledger`);
 
   const sql = readFileSync(SCHEMA_VIEWS, "utf8");
   db.exec(sql);

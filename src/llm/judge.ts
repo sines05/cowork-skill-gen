@@ -21,7 +21,7 @@ import type {
 } from "../core/types.ts";
 import { LABEL_SCHEMA_VERSION } from "../core/types.ts";
 import { sha256 } from "../core/util.ts";
-import { runnerEnv, describeRunner, resolveBin } from "../llm/runner.ts";
+import { runnerEnv, describeRunner, resolveBin, recordFromEnvelope } from "../llm/runner.ts";
 import { join } from "path";
 import { promptsDir } from "../core/paths.ts";
 
@@ -151,6 +151,8 @@ export async function runClaudeP(
       `claude -p returned non-JSON envelope: ${stdout.slice(0, 300)}`
     );
   }
+  // Ledger the spend (cost + tokens) for the BI dashboard before returning the result.
+  recordFromEnvelope(envelope, opts?.model ?? MODEL);
   const result = envelope?.result;
   if (typeof result !== "string") {
     throw new Error(

@@ -4,6 +4,8 @@ node_modules/
 *.db-wal
 out/
 dist/
+skills/
+*.zip
 bi/mb-data/
 bi/data/
 *.log

@@ -44,6 +44,16 @@ evidence — not invented.
   result is good, choosing an approach, weighing trade-offs). Never freeze a reasoning step
   into a script — a script can't judge "is this output actually correct".
 
+## Assets: bundle the templates/schemas the output must conform to
+
+- If the winning workflow repeatedly produces output in a **fixed shape** — a report
+  template, a JSON/CSV schema the result must match, a checklist, a config skeleton, a
+  lookup table — bundle that artifact as an `assets` entry and tell the body to fill it
+  in rather than re-describing the shape in prose every time. This is the output-side
+  twin of `scripts`: scripts standardise the *doing*, assets standardise the *deliverable*.
+- Assets are **text only** (templates, schemas, tables) — no binaries. `[]` when the
+  output has no fixed shape (e.g. free-form research prose).
+
 ## Decomposition: index + references for multi-capability skills
 
 - If the winning workflow has **one** capability, keep a single focused `SKILL.md` body.
@@ -87,9 +97,11 @@ on Linux/Ubuntu — do not assume Windows/macOS-only tooling unless the evidence
 
 ## Evals (handoff to the test gate)
 
-Provide 2–3 realistic `evals` test cases drawn from the exemplars. Each has:
+Provide 2–3 realistic `evals` test cases drawn from the exemplars (schema mirrors Anthropic's
+skill-creator). Each has:
 - a natural-language `prompt` a user would give;
-- `assertions` — semantic, graded by an LLM (the *with-LLM* arm): what a good response must do;
+- `expected_output` — one line describing what success looks like;
+- `expectations` — semantic statements, graded by an LLM (the *with-LLM* arm): what a good response must do;
 - `checks` — **deterministic, code-checkable** signals (the *golden / no-LLM* arm), each one of:
   `{"kind":"contains","value":"<substring>"}`, `{"kind":"regex","value":"<re>"}`,
   `{"kind":"url_present"}` (cites a source), `{"kind":"code_block"}` (gives a runnable block),
@@ -108,8 +120,9 @@ These feed a with-skill vs no-skill back-test downstream (both arms).
   "skill_body_markdown": "<the SKILL.md body AFTER the frontmatter: imperative steps, examples, edge cases>",
   "references": [ { "filename": "REFERENCE.md", "markdown": "<per-capability detail; [] if single-capability>" } ],
   "scripts": [ { "filename": "run.sh", "language": "bash"|"python"|"javascript", "code": "<self-contained, error-handling>" } ],
+  "assets": [ { "filename": "report-template.md", "content": "<text template/schema/table the output must fill; [] if no fixed output shape>" } ],
   "related_skills": [ { "name": "<kebab-case skill>", "relation": "depends_on"|"followed_by"|"see_also", "why": "<short>" } ],
-  "evals": [ { "name": "<short>", "prompt": "<user request>", "assertions": ["<semantic, LLM-graded>"], "checks": [ { "kind": "contains"|"regex"|"url_present"|"code_block"|"min_length", "value": "<for contains/regex/min_length>" } ] } ],
+  "evals": [ { "name": "<short>", "prompt": "<user request>", "expected_output": "<what success looks like>", "expectations": ["<semantic, LLM-graded>"], "checks": [ { "kind": "contains"|"regex"|"url_present"|"code_block"|"min_length", "value": "<for contains/regex/min_length>" } ] } ],
   "citations": ["<sessionId#idx | friction: ... | pattern: ...>"],
   "guardrails": ["<safety/quality guardrails derived from risk_flags & friction>"],
   "anti_patterns": ["<the failing approaches to avoid, from fail patterns>"],
@@ -120,7 +133,9 @@ These feed a with-skill vs no-skill back-test downstream (both arms).
 Rules:
 - `name` MUST satisfy the regex `^[a-z0-9]+(-[a-z0-9]+)*$` and be ≤64 chars.
 - `description` non-empty, ≤1024 chars.
-- `scripts`/`references`/`related_skills` are `[]` when not needed.
+- `scripts`/`references`/`assets`/`related_skills` are `[]` when not needed — do not
+  invent them to look thorough; an empty array is the correct answer when the evidence
+  shows no deterministic step, no multi-capability split, and no fixed output shape.
 - Provide at least ONE valid `citation` grounding the skill in the evidence.
 - Numbers are bare JSON numbers; booleans are bare `true`/`false`.
 

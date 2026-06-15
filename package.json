@@ -8,6 +8,7 @@
     "discover": "bun run src/ingest/discover.ts",
     "classify": "bun run src/pipeline/classify.ts",
     "pipeline": "bun run pipeline.ts",
+    "all": "bun run pipeline --mine --yes && bun run skillgen --yes --min-frequency 1 && bun run skillcheck",
     "check": "bun run src/analysis/check.ts",
     "dump-render": "bun run src/analysis/dump-render.ts",
     "calibrate": "bun run src/analysis/calibrate.ts",

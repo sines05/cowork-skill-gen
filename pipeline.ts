@@ -27,7 +27,7 @@ import {
 import { judgeEpisodeDebate } from "./src/llm/judge.debate.ts";
 import { mine } from "./src/analysis/mine.ts";
 import { report } from "./src/analysis/report.ts";
-import { configureRunner, describeRunner, type RunnerName } from "./src/llm/runner.ts";
+import { configureRunner, describeRunner, setLlmPhase, type RunnerName } from "./src/llm/runner.ts";
 import {
   openDb,
   upsertSession,
@@ -116,6 +116,12 @@ function parseFlags(argv: string[]): Flags {
         if (a.startsWith("--")) console.warn(`[pipeline] unknown flag ignored: ${a}`);
     }
   }
+  // Env fallback for the cost ceiling: if --max-cost wasn't passed but MINER_MAX_COST is set,
+  // use it. Lets `bun run all` stay cap-free by default yet be bounded without editing scripts.
+  if (f.maxCost === undefined && process.env.MINER_MAX_COST) {
+    const v = Number(process.env.MINER_MAX_COST);
+    if (Number.isFinite(v) && v >= 0) f.maxCost = v;
+  }
   if (f.limit !== undefined && f.limit < 0) {
     console.error("[pipeline] --limit must be >= 0. Aborting.");
     process.exit(2);
@@ -194,6 +200,7 @@ async function main() {
     let turns: Awaited<ReturnType<typeof classifyTurns>>;
     try {
       const events = await source.read(session);
+      setLlmPhase("classify"); // any LLM classify calls below land in the classify bucket
       turns = await classifyTurns(session, events, { classifyLlm: flags.classifyLlm });
       episodes = segmentEpisodes(session, events, turns);
       episodes.forEach((ep, i) => {
@@ -222,6 +229,7 @@ async function main() {
 
     // ── Judge phase ──────────────────────────────────────────────────────────
     if (flags.noJudge || stopJudging) continue;
+    setLlmPhase("judge"); // judge/debate LLM spend → judge bucket
     for (const ep of episodes) {
       if (episodeBudget <= 0) {
         log(`reached --max-episodes budget; stopping judge phase.`);
@@ -296,6 +304,7 @@ async function main() {
   );
   if (flags.mine && !flags.noJudge) {
     log("running mine + report…");
+    setLlmPhase("mine"); // cluster-labeling LLM spend → mine bucket
     await mine(db);
     await report(db);
     log("wrote out/report.md and out/candidates.json");

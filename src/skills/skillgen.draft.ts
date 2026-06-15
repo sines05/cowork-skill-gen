@@ -10,14 +10,22 @@ import type { RankedCandidate } from "../core/types.ts";
 // ── Draft validation + coercion ──────────────────────────────────────────────
 export interface ScriptEntry { filename: string; language: string; code: string; }
 export interface RefEntry { filename: string; markdown: string; }
+// A static resource the skill USES while producing output — an output template, a JSON
+// schema the result must match, a lookup table, a checklist. Text-only (utf8): mined
+// skills don't carry binaries, and text stays scrubbable by the redactor.
+export interface AssetEntry { filename: string; content: string; }
 // Deterministic, code-checkable assertions — the "golden" (no-LLM) test arm. Objective
 // signals only (a URL is present, a fenced command block exists, a keyword appears).
 export type DetCheckKind = "contains" | "regex" | "url_present" | "code_block" | "min_length";
 export interface DetCheck { kind: DetCheckKind; value?: string; }
+// Matches skill-creator's evals schema (id/files added at write time): prompt +
+// expected_output + expectations (semantic, LLM-graded). `checks` is our deterministic
+// golden extension ($0, no LLM).
 export interface EvalCase {
   name: string;
   prompt: string;
-  assertions: string[]; // semantic — graded by the LLM arm
+  expected_output: string; // human-readable description of success
+  expectations: string[]; // semantic statements — graded by the LLM arm
   checks: DetCheck[]; // deterministic — graded in code, $0
 }
 // Skill chaining: a skill should not live alone — it should know which OTHER skills it
@@ -33,6 +41,7 @@ export interface Draft {
   skill_body_markdown: string;
   references: RefEntry[];
   scripts: ScriptEntry[];
+  assets: AssetEntry[];
   related_skills: RelatedSkill[];
   evals: EvalCase[];
   citations: string[];
@@ -118,6 +127,12 @@ export function validateDraft(obj: any, cand: RankedCandidate): Draft {
         }))
     : [];
 
+  const assets: AssetEntry[] = Array.isArray(obj.assets)
+    ? obj.assets
+        .filter((a: any) => a && typeof a.filename === "string" && typeof a.content === "string")
+        .map((a: any) => ({ filename: sanitizeFilename(a.filename), content: String(a.content) }))
+    : [];
+
   const CHECK_KINDS = ["contains", "regex", "url_present", "code_block", "min_length"];
   const evals: EvalCase[] = Array.isArray(obj.evals)
     ? obj.evals
@@ -125,7 +140,10 @@ export function validateDraft(obj: any, cand: RankedCandidate): Draft {
         .map((e: any, i: number) => ({
           name: typeof e.name === "string" && e.name.trim() ? e.name.trim() : `case-${i + 1}`,
           prompt: String(e.prompt),
-          assertions: asStrArr(e.assertions),
+          expected_output:
+            typeof e.expected_output === "string" ? e.expected_output : "",
+          // tolerate the spec field `expectations` or the colloquial `assertions`
+          expectations: asStrArr(e.expectations ?? e.assertions),
           checks: Array.isArray(e.checks)
             ? e.checks
                 .filter((c: any) => c && CHECK_KINDS.includes(c.kind))
@@ -160,6 +178,7 @@ export function validateDraft(obj: any, cand: RankedCandidate): Draft {
     skill_body_markdown,
     references,
     scripts,
+    assets,
     related_skills,
     evals,
     citations: asStrArr(obj.citations),

@@ -28,7 +28,7 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
 import { join, isAbsolute } from "path";
 import { runClaudeP, getModel } from "../llm/judge.ts";
-import { configureRunner, describeRunner, type RunnerName } from "../llm/runner.ts";
+import { configureRunner, describeRunner, setLlmPhase, type RunnerName } from "../llm/runner.ts";
 import { redactText } from "../core/redact.ts";
 import { outDir } from "../core/paths.ts";
 import { openDb, upsertSkillTelemetry } from "../db/db.ts";
@@ -67,7 +67,7 @@ function parseFlags(argv: string[]): Flags {
   return f;
 }
 
-interface EvalCase { name: string; prompt: string; assertions: string[]; checks: DetCheck[]; }
+interface EvalCase { name: string; prompt: string; expectations: string[]; checks: DetCheck[]; }
 
 // ── Deterministic grader (the GOLDEN / no-LLM arm) ────────────────────────────
 // Objective, $0 checks. This is the half of the back-test that does NOT depend on an LLM,
@@ -112,13 +112,15 @@ function loadSkill(dir: string): { body: string; evals: EvalCase[]; name: string
   if (existsSync(evalsPath)) {
     try {
       const j = JSON.parse(readFileSync(evalsPath, "utf8"));
-      if (Array.isArray(j.test_cases))
-        evals = j.test_cases.map((c: any) => ({
-          name: c.name ?? "case",
-          prompt: String(c.prompt ?? ""),
-          assertions: Array.isArray(c.assertions) ? c.assertions : [],
-          checks: Array.isArray(c.checks) ? c.checks : [],
-        }));
+      // Canonical skill-creator schema uses `evals`; tolerate the older `test_cases`.
+      const cases = Array.isArray(j.evals) ? j.evals : Array.isArray(j.test_cases) ? j.test_cases : [];
+      evals = cases.map((c: any, i: number) => ({
+        name: c.name ?? c.eval_name ?? `case-${i + 1}`,
+        prompt: String(c.prompt ?? ""),
+        // tolerate the spec field `expectations` or the colloquial `assertions`
+        expectations: Array.isArray(c.expectations) ? c.expectations : Array.isArray(c.expectations) ? c.expectations : [],
+        checks: Array.isArray(c.checks) ? c.checks : [],
+      }));
     } catch { /* ignore */ }
   }
   return { body, evals, name };
@@ -172,6 +174,7 @@ async function main() {
     process.exit(2);
   }
   configureRunner({ runner: flags.runner, ccsProfile: flags.ccsProfile });
+  setLlmPhase("skilleval"); // attribute all LLM spend in this process to the skilleval bucket
   const model = getModel({ model: flags.model });
   const { body, evals, name } = loadSkill(dir);
 
@@ -190,8 +193,8 @@ async function main() {
     for (const c of evals) {
       console.log(`\n=== case: ${c.name} ===`);
       console.log(`prompt: ${redactText(c.prompt).text}`);
-      console.log(`assertions — LLM-graded (${c.assertions.length}):`);
-      c.assertions.forEach((a, i) => console.log(`  ${i + 1}. ${a}`));
+      console.log(`expectations — LLM-graded (${c.expectations.length}):`);
+      c.expectations.forEach((a, i) => console.log(`  ${i + 1}. ${a}`));
       console.log(`checks — golden/no-LLM (${c.checks.length}):`);
       c.checks.forEach((ch, i) => console.log(`  ${i + 1}. ${ch.kind}${ch.value ? ` "${ch.value}"` : ""}`));
     }
@@ -223,24 +226,24 @@ async function main() {
       ]);
       // Arm 1 — LLM-graded semantic assertions (needs the grader model).
       const [withG, baseG] = await Promise.all([
-        gradeAssertions(c.prompt, withResp, c.assertions, model),
-        gradeAssertions(c.prompt, baseResp, c.assertions, model),
+        gradeAssertions(c.prompt, withResp, c.expectations, model),
+        gradeAssertions(c.prompt, baseResp, c.expectations, model),
       ]);
       const wL = withG.filter(Boolean).length, bL = baseG.filter(Boolean).length;
       // Arm 2 — deterministic golden checks ($0, no LLM), same responses.
       const wD = gradeChecks(withResp, c.checks).filter(Boolean).length;
       const bD = gradeChecks(baseResp, c.checks).filter(Boolean).length;
-      withLlm += wL; baseLlm += bL; llmTotal += c.assertions.length;
+      withLlm += wL; baseLlm += bL; llmTotal += c.expectations.length;
       withDet += wD; baseDet += bD; detTotal += c.checks.length;
       doneCases++;
       console.log(
-        `  ${c.name}: LLM with ${wL}/${c.assertions.length} vs base ${bL} ` +
+        `  ${c.name}: LLM with ${wL}/${c.expectations.length} vs base ${bL} ` +
         `(Δ${wL - bL >= 0 ? "+" : ""}${wL - bL}) · golden with ${wD}/${c.checks.length} vs base ${bD} ` +
         `(Δ${wD - bD >= 0 ? "+" : ""}${wD - bD})`
       );
       events.push({
         skill: name, case: c.name, ts: createdAt,
-        llm: { with: wL, base: bL, total: c.assertions.length },
+        llm: { with: wL, base: bL, total: c.expectations.length },
         golden: { with: wD, base: bD, total: c.checks.length },
       });
     } catch (e) {

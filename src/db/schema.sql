@@ -148,6 +148,28 @@ CREATE TABLE IF NOT EXISTS skill_telemetry (
 );
 CREATE INDEX IF NOT EXISTS idx_skill_telemetry_skill ON skill_telemetry(skill);
 
+-- LLM spend ledger. One row per real LLM call the pipeline makes (judge, skillgen,
+-- skilleval, classify, mine), loaded from out/telemetry/llm_calls.jsonl. This is the
+-- pipeline's OWN cost (mining spend) — distinct from episode_features.tokens, which is the
+-- token volume of the sessions being analyzed. call_id = sha256 of the ledger line (dedupe
+-- on reload, so re-running the loader is idempotent).
+CREATE TABLE IF NOT EXISTS llm_calls (
+  call_id                TEXT PRIMARY KEY,
+  at                     TEXT,             -- ISO timestamp
+  phase                  TEXT,             -- judge|skillgen|skilleval|classify|mine|other
+  runner                 TEXT,             -- ccs|claude|api
+  model                  TEXT,
+  input_tokens           INTEGER,
+  output_tokens          INTEGER,
+  cache_read_tokens      INTEGER,
+  cache_creation_tokens  INTEGER,
+  cost_usd               REAL,
+  duration_ms            INTEGER,
+  ok                     INTEGER           -- 1 = succeeded, 0 = failed/errored
+);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_phase ON llm_calls(phase);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_at ON llm_calls(at);
+
 -- Generated skill drafts (skill-gen phase). One row per cluster. Cache-keyed on
 -- evidence_hash + prompt_hash + model so re-runs skip unchanged clusters (mirrors the
 -- judge cache discipline — don't re-spend LLM calls on identical evidence).

@@ -98,39 +98,61 @@ flowchart TD
 
 ## Quickstart
 
+### One command — logs → validated skills
+
 ```bash
-bun install                                  # only dep: @types/bun (uses bun:sqlite)
+bun install                          # once: deps (only @types/bun)
 
-# 1) Structure pass — free, no LLM (populate episodes from your logs)
-bun run pipeline.ts --no-judge
-bun run check                                # 9 hard invariants, $0
-
-# 2) Judge episodes (real LLM calls — bounded by cost)
-bun run pipeline.ts --max-cost 6 --yes --mine
-#    Critical-stage option: multi-perspective adversarial ENSEMBLE judge
-#    (productivity/accuracy/cost lenses → critique→refute rounds → converge → consolidator;
-#     all rounds saved to episode_judge_rounds). ~8× the calls, far more robust.
-bun run pipeline.ts --judge-debate --judge-rounds 2 --yes --mine
-
-# 3) Trust gate
-bun run src/analysis/calibrate.ts            # interactive human spot-check
-
-# 4) Generate skills from worth-codifying clusters
-bun run skillgen --no-llm                    # $0: inspect the redacted evidence first
-bun run skillgen --yes                       # draft → out/skills/<name>/{SKILL.md,agent.md,evals,meta.json}
-bun run skillcheck                           # $0 quality gate over all generated skills
-
-# 5) Back-test a generated skill (golden no-LLM arm + LLM arm; writes telemetry)
-bun run skilleval --skill <name> --dry       # $0 plan; --execute to really run
-
-# 6) Leadership dashboard (Metabase)
-bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision
-#   → http://localhost:3000/dashboard/2   (admin@cowork.local / Cowork-admin-1)
+bun run all                          # mine Claude Code logs (~/.claude/projects)
+MINER_SOURCE=cowork bun run all      # mine Claude Cowork logs (audit.jsonl)  ← Windows/Cowork
 ```
 
-**LLM routing:** `--runner ccs|claude|api`. Default tries a `ccs` profile, falls back to the plain
-`claude` CLI automatically; `--runner api` uses the HTTP Messages API (Windows / no-CLI). Cost gates,
-a circuit breaker, and `--max-cost` keep spend bounded.
+`bun run all` chains stages 1–4: `pipeline --mine --yes && skillgen --yes --min-frequency 1 && skillcheck`.
+Pick the corpus with the **`MINER_SOURCE`** env var (`cowork` or `claude-code`, default `claude-code`).
+
+Two things `all` deliberately does NOT do:
+- **No dashboard** — stage 6 needs Docker, so run it separately (below).
+- **No cost ceiling** — `all` judges the whole corpus. Set **`MINER_MAX_COST`** (USD) to bound it,
+  e.g. `MINER_MAX_COST=10 bun run all`. On a large corpus, judging everything on the opus tier
+  can run into tens of dollars (≈ $0.40/episode), so set a cap unless you mean to judge it all.
+
+> `--min-frequency 1` makes `skillgen` draft **leads** (any cluster with ≥1 episode), so a thin
+> corpus still produces skills to review. Drop it for the stricter "worth-codifying" gate.
+
+> Note: `bun run pipeline --mine --yes` on its own already runs the **whole mining pipeline**
+> in one command (ingest → classify → judge → cluster → report). `all` just also drafts + validates skills.
+
+### Or stage by stage — one command each, top to bottom
+
+```bash
+bun run pipeline --no-judge              # 1. logs → episodes      (free, no LLM)
+bun run pipeline --mine --yes --max-cost 6   # 2. judge + cluster  (LLM; --max-cost optional cap)
+bun run skillgen --yes                   # 3. clusters → skills    → out/skills/
+bun run skillcheck                       # 4. validate structure   (free)
+bun run skilleval --skill <name>         # 5. back-test the skill  (LLM)
+bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   # 6. dashboard
+#                                        → http://localhost:3000  (admin@cowork.local / Cowork-admin-1)
+```
+
+**What the flags mean** (only the ones above; all are optional unless a stage needs them):
+
+| Flag | Used by | What it does |
+|---|---|---|
+| `--no-judge` | `pipeline` | Only segment logs into episodes; **skip the paid LLM judge**. Free first pass. |
+| `--mine` | `pipeline` | After judging, **cluster** similar episodes and rank which are worth codifying. |
+| `--max-cost N` | `pipeline` | **Circuit breaker** — stop judging once estimated spend reaches $N. |
+| `--yes` | `pipeline`, `skillgen` | Skip the "spend money?" confirmation prompt (for scripts/CI). |
+| `--skill <name>` | `skilleval` | Which generated skill (folder name under `out/skills/`) to back-test. |
+
+**Optional, when you want more:**
+
+| Flag | Used by | What it does |
+|---|---|---|
+| `--judge-debate` `--judge-rounds N` | `pipeline` | Multi-perspective **ensemble** judge (productivity/accuracy/cost lenses → critique→refute for N rounds → consolidate). ~8× the cost, far more robust. Default N=2. |
+| `--no-llm` | `skillgen` | $0 dry run: print the **redacted evidence** the model would see, write nothing. |
+| `--dry` / `--execute` | `skilleval` | Plan only ($0) vs. actually run the eval. Defaults to `--dry`. |
+| `--runner ccs\|claude\|api` | any LLM stage | How to reach the model: `ccs` (default, falls back to plain `claude`) · `claude` (CLI) · `api` (HTTP Messages API — for Windows / no-CLI). |
+| `bun run check` | — | Run hard data invariants ($0); use after stage 1 to sanity-check ingest. |
 
 ---
 
@@ -138,8 +160,13 @@ a circuit breaker, and `--max-cost` keep spend bounded.
 
 The dashboard is a **separate presentation layer** — not the Bun engine. Primary = **Metabase**
 (a real BI tool: self-serve, auth, scheduled reports). `bun run bi:provision` builds it as
-config-as-code (8 cards, idempotent). The static `out/dashboard.html` is kept only as an **offline
-fallback** (air-gapped / single-`.exe`). See [`bi/README.md`](bi/README.md).
+config-as-code (16 cards, idempotent) in clearly-banded sections:
+**Overview** (episodes, success %, judge↔human agreement) · **Cost & tokens** (LLM spend $, total
+tokens, calls, plus cost by phase / by model / over time — the pipeline's *own* mining spend) ·
+**Outcomes** · **Output** (skills). Cost data is captured per LLM call into `out/telemetry/llm_calls.jsonl`
+and folded into the `llm_calls` table automatically by `bun run views` / `bi:refresh`. The static
+`out/dashboard.html` is kept only as an **offline fallback** (air-gapped / single-`.exe`). See
+[`bi/README.md`](bi/README.md).
 
 ```mermaid
 flowchart LR
@@ -165,18 +192,22 @@ pattern, fail patterns, recurring friction, good practices, exemplars), **redact
 model to draft a skill **grounded at the pattern level** (per Anthropic's `skill-creator` guidance:
 imperative, explain *why*, no overfit). Skills follow the leadership rec: the `description` leads
 with **when to use** (the trigger); deterministic steps go to `scripts/`, judgement stays in the body;
-multi-capability skills split into `references/`; and each declares its **`related_skills`** (chain:
-depends_on / followed_by / see_also). No creation-history leaks into SKILL.md — provenance lives in
-`meta.json`. Output is a real, spec-compliant skill folder:
+multi-capability skills split into `references/`; fixed output shapes (templates/schemas) go to
+`assets/`; and each declares its **`related_skills`** (chain: depends_on / followed_by / see_also).
+No creation-history leaks into SKILL.md — provenance lives in `meta.json`. Output is a real,
+spec-compliant skill folder (the optional dirs appear only when the evidence warrants them):
 
 ```
 out/skills/<name>/
-  SKILL.md            # frontmatter (name, when-to-use description, related_skills) + body
-  agent.md            # sub-agent definition (only for ISOLATED skills — run in own context)
-  scripts/ references/ # optional: deterministic helpers · per-capability detail
-  evals/evals.json    # test cases: LLM-graded assertions + deterministic golden checks
-  meta.json           # provenance: cluster, citations, gate result, confidence, related_skills
+  SKILL.md                    # required: frontmatter (name, when-to-use description) + body
+  LICENSE.txt                 # license referenced by the frontmatter (mirrors Anthropic's skills)
+  scripts/ references/ assets/ # optional: deterministic helpers · per-capability detail · output templates
+  evals/evals.json            # test cases: LLM-graded expectations + deterministic golden checks
+  meta.json                   # provenance + execution hint: cluster, citations, gate, related_skills
 ```
+
+What each part is *for* — and why our generator emits (or omits) it — is documented in
+[`docs/SKILL_STANDARD.md`](docs/SKILL_STANDARD.md).
 
 ---
 
@@ -212,13 +243,13 @@ bun run build:win                                            # single .exe for M
 | **core** | `src/core/{types,util,redact,paths}.ts` — shared contract, redaction, path resolution |
 | **ingest** | `src/ingest/{source,discover,cowork,cowork-audit}.ts` — pluggable log sources |
 | **pipeline** | `src/pipeline/{classify*,segment,signals,subagents,render}.ts` — turns → episodes → evidence |
-| **llm** | `src/llm/{judge,judge.debate,runner,api}.ts` — single + debate-ensemble judge, model tiering, HTTP API |
+| **llm** | `src/llm/{judge,judge.debate,runner,api}.ts` — single + debate-ensemble judge, model tiering, HTTP API, **per-call cost/token ledger** |
 | **analysis** | `src/analysis/{mine,report,calibrate,check,dump-render,dashboard,merge,views}.ts` |
 | **skills** | `src/skills/{skillgen*,skilleval,skillcheck,skillhook}.ts` — draft + gate + back-test + quality-gate hook |
-| **db** | `src/db/{db.ts,schema.sql,views.sql}` — SQLite persistence + BI views |
+| **db** | `src/db/{db.ts,schema.sql,views.sql,llm_ledger.ts}` — SQLite persistence + BI views + LLM-spend loader |
 | **bi** | `bi/{docker-compose.yml,provision.ts,refresh.ts,README.md}` — Metabase, config-as-code |
 | **prompts** | `prompts/{classify,judge,skillgen}.md` — the rubrics |
-| **docs** | [`docs/COWORK_STORAGE.md`](docs/COWORK_STORAGE.md) · [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) · [`docs/implementation-plan.md`](docs/implementation-plan.md) |
+| **docs** | [`docs/COWORK_STORAGE.md`](docs/COWORK_STORAGE.md) · [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) · [`docs/SKILL_STANDARD.md`](docs/SKILL_STANDARD.md) · [`docs/implementation-plan.md`](docs/implementation-plan.md) |
 
 ---
 
@@ -245,9 +276,9 @@ Metabase** cho lãnh đạo.
   ghi telemetry) · **hook `skillcheck`** chốt chất lượng skill.
 - **Judge:** mặc định 1 LLM, hoặc **ensemble phản biện đa góc nhìn** (`--judge-debate`); LLM **phân tầng
   model** (discovery rẻ, judge ngon). Skill có **`related_skills` (chain)**, đẩy bước máy-làm-được sang
-  script, skill cô lập sinh **sub-agent** (`agent.md`).
+  `scripts/`, output cố định sang `assets/`; gợi ý chạy độc lập + tầng model ghi ở `meta.json`.
 - **Riêng tư:** redact secrets/PII/đường dẫn **tại biên** trước khi tới LLM hoặc ghi file.
-- **Dashboard:** Metabase (`bun run bi:provision` tự dựng) — `http://localhost:3000/dashboard/2`.
+- **Dashboard:** Metabase (`bun run bi:provision` tự dựng + in URL, vd `/dashboard/3`) — `http://localhost:3000`.
 - **Windows/Cowork:** transcript thật ở `audit.jsonl` (xem `docs/COWORK_STORAGE.md`); chạy
   `--source cowork --runner claude`, đóng gói `bun run build:win`.
 

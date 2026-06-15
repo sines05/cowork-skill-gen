@@ -19,7 +19,7 @@ import type {
   SkillType,
 } from "../core/types.ts";
 import { median } from "../core/util.ts";
-import { runnerEnv, resolveBin, modelTier } from "../llm/runner.ts";
+import { runnerEnv, resolveBin, modelTier, recordFromEnvelope } from "../llm/runner.ts";
 
 // Internal flag: LLM grouping pass. Default OFF for DETERMINISM — the eval report
 // flagged that the LLM merge gave different clusters across runs (a cluster appearing
@@ -168,6 +168,7 @@ mapping each input string to its cluster label: {"<input>": "<cluster label>", .
     clearTimeout(timer);
 
     const envelope = JSON.parse(out);
+    recordFromEnvelope(envelope, modelTier("cheap"));
     const inner = typeof envelope?.result === "string" ? envelope.result : out;
     const match = inner.match(/\{[\s\S]*\}/);
     const obj = JSON.parse(match ? match[0] : inner);

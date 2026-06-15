@@ -57,7 +57,11 @@ export function gate2A(draft: Draft, ev: Evidence, members: string[]): GateResul
 
   // 4. Anti-hardcode / leakage. Re-scan the GENERATED body+scripts; the LLM could echo
   // a literal even though evidence was redacted.
-  const blob = draft.skill_body_markdown + "\n" + draft.scripts.map((s) => s.code).join("\n");
+  const blob =
+    draft.skill_body_markdown +
+    "\n" + draft.scripts.map((s) => s.code).join("\n") +
+    "\n" + draft.references.map((r) => r.markdown).join("\n") +
+    "\n" + draft.assets.map((a) => a.content).join("\n");
   const r = redactText(blob);
   if (r.nRedacted > 0) {
     // A secret/credential in generated output is a hard fail; a personal path is a warn.
