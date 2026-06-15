@@ -6,7 +6,7 @@
 // with-skill vs no-skill (a baseline) and grades the objectively-verifiable assertions
 // with an LLM judge, then reports a per-skill pass rate and the with-vs-without delta.
 //
-// Honest limitations (by design — this is a scaffold to build on, see BRAINSTORM.md §5):
+// Honest limitations (by design):
 //  - "Skill active" is APPROXIMATED by prepending the SKILL.md body to the prompt. Real
 //    activation goes through the agent's skills mechanism; a true back-test installs the
 //    skill and runs the agent. The prepend is a faithful-enough proxy for measuring

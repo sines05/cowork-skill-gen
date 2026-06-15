@@ -16,9 +16,9 @@ gate) end-to-end, plus the BI layer; deployment/convergence are architected and 
 
 ```mermaid
 flowchart TD
-    C["1 · Capture<br/>Cowork/Code logs"] --> M["2 · Mine<br/>good vs bad workflows ✅"]
+    C["1 · Capture<br/>Cowork/Code logs ✅"] --> M["2 · Mine<br/>good vs bad workflows ✅"]
     M --> G["3 · Skill-gen<br/>draft Agent Skills ✅"]
-    G --> Q["Gate 2<br/>2-A static ✅ · 2-B back-test 🟡"]
+    G --> Q["Gate 2<br/>2-A static ✅ · 2-B back-test ✅"]
     Q --> D["4 · Deploy to Cowork 🔶"]
     D --> V["5 · Multi-machine convergence 🔶"]
     V --> C
@@ -28,12 +28,12 @@ flowchart TD
     classDef done fill:#d4f4dd,stroke:#2a8;
     classDef wip fill:#fff3cd,stroke:#ca0;
     classDef todo fill:#eef,stroke:#88a;
-    class M,G,B,P done;
-    class Q wip;
+    class C,M,G,B,P done;
+    class Q done;
     class D,V todo;
 ```
 
-✅ built & tested · 🟡 partial (scaffold) · 🔶 designed, needs real Cowork data / Windows
+✅ built & tested (incl. real Cowork logs on Windows) · 🔶 designed, needs fleet rollout
 
 ---
 
@@ -42,6 +42,8 @@ flowchart TD
 Each **episode** = one complete task attempt (including the user's corrections/rework). The engine
 classifies every human turn, groups turns into episodes, attaches evidence, and has an LLM judge
 grade each episode on **user-observable behaviour** (did the user accept / rework / interrupt / abandon?).
+The judge runs single-LLM by default, or as a **multi-perspective debate ensemble** (`--judge-debate`)
+for the critical decision; LLM calls are **model-tiered** (cheap for discovery, best for judging).
 
 ```mermaid
 flowchart LR
@@ -85,8 +87,13 @@ flowchart TD
   "Claude grading Claude"). *Current run: 82% agreement on 11 reviewed episodes.*
 - **Gate 2-A** — `skillgen`: static checks — valid SKILL.md frontmatter, every step grounded in
   evidence, no hardcoded/secret literals, non-triviality, safety.
-- **Gate 2-B** — `skilleval`: runs the skill's `evals.json` *with-skill vs no-skill* and measures the
-  uplift. The strongest signal is the **closed loop** — deploy, then re-mine future logs.
+- **Gate 2-B** — `skilleval`: runs the skill's `evals.json` *with-skill vs no-skill* in **two arms** —
+  a `$0` deterministic **golden** check (no LLM) and an LLM-graded **semantic** check — and measures the
+  uplift of each. Results are written as **telemetry** (`skill_telemetry` table + `out/telemetry/*.jsonl`).
+  The strongest signal is still the **closed loop** — deploy, then re-mine future logs.
+- **Quality-gate hook** — `skillcheck` validates every generated SKILL.md (frontmatter, when-to-use
+  framing, gate verdict, no PII, no creation-history leak); wired as a Claude Code hook
+  (`.claude/settings.json`) so a bad skill written in-session is **blocked**.
 
 ---
 
@@ -111,9 +118,10 @@ bun run src/analysis/calibrate.ts            # interactive human spot-check
 
 # 4) Generate skills from worth-codifying clusters
 bun run skillgen --no-llm                    # $0: inspect the redacted evidence first
-bun run skillgen --yes                       # draft → out/skills/<name>/SKILL.md
+bun run skillgen --yes                       # draft → out/skills/<name>/{SKILL.md,agent.md,evals,meta.json}
+bun run skillcheck                           # $0 quality gate over all generated skills
 
-# 5) Back-test a generated skill
+# 5) Back-test a generated skill (golden no-LLM arm + LLM arm; writes telemetry)
 bun run skilleval --skill <name> --dry       # $0 plan; --execute to really run
 
 # 6) Leadership dashboard (Metabase)
@@ -156,32 +164,45 @@ dashboard rework, just a different data-source connection.
 For each worth-codifying cluster, `skillgen` assembles the judge's distilled evidence (winning
 pattern, fail patterns, recurring friction, good practices, exemplars), **redacts it**, and asks the
 model to draft a skill **grounded at the pattern level** (per Anthropic's `skill-creator` guidance:
-imperative, explain *why*, no overfit). Output is a real, spec-compliant skill folder:
+imperative, explain *why*, no overfit). Skills follow the leadership rec: the `description` leads
+with **when to use** (the trigger); deterministic steps go to `scripts/`, judgement stays in the body;
+multi-capability skills split into `references/`; and each declares its **`related_skills`** (chain:
+depends_on / followed_by / see_also). No creation-history leaks into SKILL.md — provenance lives in
+`meta.json`. Output is a real, spec-compliant skill folder:
 
 ```
 out/skills/<name>/
-  SKILL.md            # YAML frontmatter (name ≤64, description ≤1024, compatibility) + body
-  scripts/ references/ # optional bundled resources (hybrid skill + script)
-  evals/evals.json    # 2-3 test cases → handoff to the Gate 2-B back-test
-  meta.json           # provenance: cluster, citations, gate result, confidence
+  SKILL.md            # frontmatter (name, when-to-use description, related_skills) + body
+  agent.md            # sub-agent definition (only for ISOLATED skills — run in own context)
+  scripts/ references/ # optional: deterministic helpers · per-capability detail
+  evals/evals.json    # test cases: LLM-graded assertions + deterministic golden checks
+  meta.json           # provenance: cluster, citations, gate result, confidence, related_skills
 ```
 
 ---
 
 ## Windows / Claude Cowork target
 
-Claude Cowork ships **only on Windows/macOS** and stores conversations at
-`%LOCALAPPDATA%\Claude-3p\local-agent-mode-sessions\local_<uuid>.json` (a single JSON, unlike Claude
-Code's `.jsonl`). The pipeline targets it without a rewrite via a **source adapter**:
+Verified against real Windows logs — full map in [`docs/COWORK_STORAGE.md`](docs/COWORK_STORAGE.md).
+Claude Cowork ("local agent mode") writes a verbatim, HMAC-signed transcript per session:
+
+```
+…\Packages\Claude_<hash>\LocalCache\Roaming\Claude\local-agent-mode-sessions\<g>\<c>\local_<task>\audit.jsonl
+```
+
+It is the Agent-SDK **stream-json** shape. `src/ingest/cowork.ts` discovers it (pairing the sibling
+`local_<task>.json` metadata for title/model/email/timestamps) and normalizes each line to the
+canonical `RawEvent`, so the whole pipeline runs unchanged. Claude **Code** CLI transcripts
+(`~/.claude/projects/**/*.jsonl`) work too.
 
 ```bash
-bun run pipeline.ts --source cowork --runner api --mine      # ingest Cowork logs, LLM via API
+bun run pipeline.ts --source cowork --runner claude --mine   # ingest Cowork logs, LLM via claude -p
 bun run build:win                                            # single .exe for MDM fleet rollout
 ```
 
 - `--source claude-code` (default) | `cowork` — `src/ingest/source.ts`
-- `COWORK_SESSIONS_ROOT=<dir>` to point at exported logs on any OS
-- The Cowork JSON field-mapping is tolerant and should be **locked against one real sample**.
+- `COWORK_SESSIONS_ROOT=<dir>` overrides the root (Linux / CI / mounted logs)
+- Claude **Desktop chat** (LevelDB/IndexedDB) is intentionally out of scope — Cowork + Code cover the use case.
 
 ---
 
@@ -192,24 +213,25 @@ bun run build:win                                            # single .exe for M
 | **core** | `src/core/{types,util,redact,paths}.ts` — shared contract, redaction, path resolution |
 | **ingest** | `src/ingest/{source,discover,cowork,cowork-audit}.ts` — pluggable log sources |
 | **pipeline** | `src/pipeline/{classify*,segment,signals,subagents,render}.ts` — turns → episodes → evidence |
-| **llm** | `src/llm/{judge,runner,api}.ts` — bias-anchored judge, runner selection, HTTP API |
+| **llm** | `src/llm/{judge,judge.debate,runner,api}.ts` — single + debate-ensemble judge, model tiering, HTTP API |
 | **analysis** | `src/analysis/{mine,report,calibrate,check,dump-render,dashboard,merge,views}.ts` |
-| **skills** | `src/skills/{skillgen*,skilleval}.ts` — draft + gate + back-test |
+| **skills** | `src/skills/{skillgen*,skilleval,skillcheck,skillhook}.ts` — draft + gate + back-test + quality-gate hook |
 | **db** | `src/db/{db.ts,schema.sql,views.sql}` — SQLite persistence + BI views |
 | **bi** | `bi/{docker-compose.yml,provision.ts,refresh.ts,README.md}` — Metabase, config-as-code |
 | **prompts** | `prompts/{classify,judge,skillgen}.md` — the rubrics |
-| **docs** | [`docs/BRAINSTORM.md`](docs/BRAINSTORM.md) · [`docs/implementation-plan.md`](docs/implementation-plan.md) · [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) |
+| **docs** | [`docs/COWORK_STORAGE.md`](docs/COWORK_STORAGE.md) · [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) · [`docs/implementation-plan.md`](docs/implementation-plan.md) |
 
 ---
 
 ## Project status (honest)
 
-| Done ✅ | Partial 🟡 | Blocked on real data / infra 🔶 |
-|---|---|---|
-| Mining pipeline (VI-aware), judge + cache | Gate 2-B (proxy works; canal/canary needs real tasks) | Lock Cowork adapter (needs a real `local_<uuid>.json`) |
-| Skill-gen + Gate 2-A (spec-compliant) | `.exe` build (script ready; validate on Windows) | Live `--runner api` (needs an API key here) |
-| Metabase dashboard (config-as-code) | | Business-data corpus + multi-person clusters |
-| Redaction-first, portability, calibration | | Legal / retention / access governance |
+| Done ✅ | Designed / needs fleet 🔶 |
+|---|---|
+| Cowork ingest (`audit.jsonl`) verified on Windows + Code JSONL | Deploy skills to Cowork + multi-machine convergence (`merge`) |
+| Mining pipeline (VI-aware), judge + cache + **debate ensemble** | Business-data corpus + multi-person clusters |
+| Skill-gen + Gate 2-A + **chaining / det→code / sub-agents** | Live `--runner api` (needs an API key here) |
+| Gate 2-B **golden (no-LLM) + LLM arm + telemetry**; **quality-gate hook** | Legal / retention / access governance |
+| Model tiering, Metabase dashboard, redaction-first, calibration | `.exe` fleet build (script ready) |
 
 ---
 
@@ -220,10 +242,15 @@ bun run build:win                                            # single .exe for M
 Metabase** cho lãnh đạo.
 
 - **2 cổng tin cậy:** Go/Kill 1 (`calibrate` — đối chiếu judge vs người, hiện 82%) · Gate 2-A (kiểm
-  tĩnh skill) · Gate 2-B (`skilleval` — back-test có/không skill).
+  tĩnh skill) · Gate 2-B (`skilleval` — back-test có/không skill, **2 nhánh: golden không-LLM + LLM**,
+  ghi telemetry) · **hook `skillcheck`** chốt chất lượng skill.
+- **Judge:** mặc định 1 LLM, hoặc **ensemble phản biện đa góc nhìn** (`--judge-debate`); LLM **phân tầng
+  model** (discovery rẻ, judge ngon). Skill có **`related_skills` (chain)**, đẩy bước máy-làm-được sang
+  script, skill cô lập sinh **sub-agent** (`agent.md`).
 - **Riêng tư:** redact secrets/PII/đường dẫn **tại biên** trước khi tới LLM hoặc ghi file.
 - **Dashboard:** Metabase (`bun run bi:provision` tự dựng) — `http://localhost:3000/dashboard/2`.
-- **Windows/Cowork:** `--source cowork`, `--runner api`, `bun run build:win`.
+- **Windows/Cowork:** transcript thật ở `audit.jsonl` (xem `docs/COWORK_STORAGE.md`); chạy
+  `--source cowork --runner claude`, đóng gói `bun run build:win`.
 
 Chạy nhanh:
 ```bash
@@ -234,4 +261,6 @@ bun run skillgen --yes                                  # sinh skill
 bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   # dashboard
 ```
 
-Xem [`docs/BRAINSTORM.md`](docs/BRAINSTORM.md) để biết quyết định thiết kế từng mảng.
+Chi tiết: [`docs/COWORK_STORAGE.md`](docs/COWORK_STORAGE.md) (lưu trữ Cowork/Code) ·
+[`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) (schema transcript) ·
+[`docs/implementation-plan.md`](docs/implementation-plan.md) (kế hoạch mining).

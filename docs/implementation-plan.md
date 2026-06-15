@@ -1,8 +1,16 @@
 # Plan: Cowork Workflow Miner — label good/bad workflows from sessions → ranked skill candidates
 
+> **v4 — shipped beyond the plan (2026-06).** The Stage 1–9 mining design below is still
+> accurate. Built on top of it since v3: **Cowork ingest** (`audit.jsonl`, verified on Windows —
+> see [`COWORK_STORAGE.md`](COWORK_STORAGE.md) / [`DATA_FORMAT.md`](DATA_FORMAT.md)); a
+> **multi-perspective debate-ensemble judge** (`--judge-debate`); **model tiering** (cheap
+> discovery / best judging); the **skill template overhaul** (when-to-use description,
+> `related_skills` chaining, deterministic→script, isolated-skill sub-agents); **Gate 2-B**
+> two-arm back-test (golden no-LLM + LLM) with **telemetry**; and a **`skillcheck` quality-gate
+> hook**. The "Out of scope" list below is updated accordingly.
+
 > **v3 — extends past the mining gate.** This doc still describes the **mining** half
-> (Cổng Go/Kill 1, §Stage 1–9 below — accurate). What changed since v2, with per-area
-> options→choice rationale in **`BRAINSTORM.md`**:
+> (Cổng Go/Kill 1, §Stage 1–9 below — accurate). What changed since v2:
 > - **Skill generation (Cổng Go/Kill 2, draft side)** added: `src/skillgen.ts` drafts
 >   spec-compliant Agent Skills from worth-codifying clusters + Gate 2-A static checks.
 >   The old "stops **before** drafting skills" line no longer holds — it now drafts, then
@@ -196,8 +204,11 @@ A judge cannot be calibrated against zero ground truth. This is a **mini Tier 1*
 
 **Success = `report.md` surfaces at least one task where a good and a bad workflow are clearly distinguished with exemplar evidence, and judge↔human agreement on the calibration set is acceptable** — the trustworthy signal your Go/Kill 1 gate needs.
 
-## Out of scope (deliberately)
-SKILL.md drafting (gated in plan.md), org rollout/redaction/PR governance, vector store/KG, multi-user consolidation, composite ranking score, full subagent-transcript join. `candidates.json` is the clean handoff to those phases.
+## Out of scope (still deliberately deferred)
+Fleet rollout (deploy skills to Cowork machines + multi-machine convergence beyond `merge`),
+org PR/retention/access governance, vector store/KG, multi-user consolidation, composite ranking
+score, full subagent-transcript join. (SKILL.md drafting, the back-test, and Cowork ingest — once
+out of scope — are now built; see the v4 note at the top.)
 
 ## Risks / notes
 - **Segmentation is the linchpin** — every downstream stage depends on episode quality; that's why classification is its own P0 stage with its own audit table and verification step.

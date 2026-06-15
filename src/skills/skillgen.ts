@@ -15,7 +15,7 @@
 //     evals/evals.json    (2-3 test cases — handoff to the Gate 2-B back-test)
 //     meta.json           (provenance: cluster, citations, gate result, confidence)
 //
-// Design choices (see BRAINSTORM.md §4-5,8): grounded LLM draft (not a hardcoded
+// Design choices: grounded LLM draft (not a hardcoded
 // template, not free-form), pattern-level citation, redact-first, tiered gate (static
 // here; back-test deferred to skilleval.ts), cost-gated + cache-keyed like the judge.
 //

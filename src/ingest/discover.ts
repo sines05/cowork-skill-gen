@@ -12,7 +12,7 @@ import { readEvents } from "../core/util.ts";
 // configurable via MINER_PROJECTS_ROOT so a different source (e.g. exported Cowork
 // app logs converted to the same RawEvent .jsonl format) can be pointed at without
 // code changes. This is the first seam toward a pluggable source adapter (see
-// BRAINSTORM.md §1) — the parsing contract is RawEvent in types.ts.
+// docs/DATA_FORMAT.md) — the parsing contract is RawEvent in types.ts.
 const PROJECTS_ROOT =
   process.env.MINER_PROJECTS_ROOT || join(homedir(), ".claude", "projects");
 
