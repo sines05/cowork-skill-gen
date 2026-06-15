@@ -1,0 +1,38 @@
+{
+  "name": "competitive-pricing-research",
+  "cluster_id": "competitive-research-browser-automation",
+  "artifact_type": "skill",
+  "confidence": 0.3,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [
+    {
+      "name": "web-research",
+      "relation": "see_also",
+      "why": "general fallback for extracting facts and sources when live pages don't render cleanly"
+    }
+  ],
+  "citations": [
+    "65a3d9d3-16c0-4cc2-8660-69f0bc8ebbfe#0",
+    "friction: could not save chrome-extension screenshots to the sandbox filesystem, so the core 'save screenshots to folder' deliverable was not met",
+    "friction: target real-estate sites rendered pricing tables as images/canvas/video, defeating clean capture",
+    "friction: heavy pages required repeated waits/scrolls and retried capture attempts",
+    "pattern: fell back to WebSearch + HTML extraction when live pages loaded poorly",
+    "pattern: delivered the requested comparison with concrete price figures and sources",
+    "pattern: transparently disclosed the screenshot limitation to the user"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 0,
+    "dominant_pattern": null,
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

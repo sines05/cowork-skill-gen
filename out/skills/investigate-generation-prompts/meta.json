@@ -1,0 +1,33 @@
+{
+  "name": "investigate-generation-prompts",
+  "cluster_id": "prompt-engineering-investigation",
+  "artifact_type": "skill",
+  "confidence": 0.45,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [],
+  "citations": [
+    "ff5fa6fe-0a8a-479e-8b59-f86dee097344#4",
+    "pattern: explore>analyze>experiment>test>edit>document",
+    "friction: output file was hidden by .gitignore *.txt rule, requiring several attempts to surface",
+    "friction: user repeatedly could not see the generated alphas file",
+    "pattern: ran multiple runs to assess variance/stability before committing count=40",
+    "pattern: quantified the user's qualitative observation with operator counts across all 51 alphas",
+    "pattern: honest disclosure when metric parsing regex failed",
+    "pattern: read config before editing it"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 1,
+    "dominant_pattern": "explore>analyze>experiment>test>edit>document",
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

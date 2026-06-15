@@ -1,0 +1,34 @@
+{
+  "name": "answer-code-questions-from-source",
+  "cluster_id": "code-question",
+  "artifact_type": "skill",
+  "confidence": 0.34,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [],
+  "citations": [
+    "pattern: read source to confirm validate_syntax_local was a stub",
+    "pattern: verified claims by reading source code rather than guessing",
+    "pattern: explained design rationale (race condition, 6x waste) for auto_index=False",
+    "pattern: quantified tool-call distribution to find dead feedback mechanisms",
+    "pattern: grounded answer in real telemetry across 238 sessions",
+    "pattern: classified temp logs vs accumulated data before deleting",
+    "pattern: checked manifest for stale index entries",
+    "friction: first grep was noisy and had to be re-run with a tighter filter",
+    "friction: transient tool/classifier unavailability forced a retry on the log-cleanup command"
+  ],
+  "evidence_summary": {
+    "frequency": 3,
+    "n_sessions": 2,
+    "success_rate": 0,
+    "dominant_pattern": null,
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

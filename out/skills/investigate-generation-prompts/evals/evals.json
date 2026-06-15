@@ -1,0 +1,64 @@
+{
+  "skill_name": "investigate-generation-prompts",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our generator produces a batch each run but the quality feels inconsistent. Help me decide how many items to generate per run.",
+      "expected_output": "Runs the generator several times in dry-run mode, reports the metric and its variance across runs, and recommends a count justified by stability rather than a single run.",
+      "expectations": [
+        "Reads the config/entry point before changing the count",
+        "Runs the setting multiple times and reports observed variance, not a single number",
+        "Justifies the chosen value by stability and records residual uncertainty"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(variance|spread|stdev|multiple runs|several runs)"
+        },
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "You generated the file but I can't see it anywhere. Where is it?",
+      "expected_output": "Checks whether the output path is hidden by a gitignore rule, reports the matching rule, and either relocates the file, negates the rule, or shows the contents.",
+      "expectations": [
+        "Diagnoses that an ignore rule (e.g. a broad *.txt pattern) may be hiding the file",
+        "Verifies visibility deterministically rather than just re-stating the path",
+        "Offers a concrete fix: move, negate the rule, or display contents"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(gitignore|check-ignore|ignored|\\*\\.txt)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "The generated outputs all feel too simple and repetitive. Is that actually true?",
+      "expected_output": "Defines a measurable metric (e.g. operator/token/source counts) across all generated items, reports the numbers, and discloses any parsing unreliability.",
+      "expectations": [
+        "Converts the qualitative impression into a concrete metric over the full output set",
+        "Reports the measured numbers rather than agreeing impressionistically",
+        "Discloses honestly if metric extraction (e.g. regex) is unreliable"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(count|metric|measure|across all|distinct)"
+        },
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    }
+  ]
+}

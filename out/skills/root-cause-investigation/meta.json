@@ -1,0 +1,30 @@
+{
+  "name": "root-cause-investigation",
+  "cluster_id": "diagnostic-investigation",
+  "artifact_type": "skill",
+  "confidence": 0.3,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [],
+  "citations": [
+    "good_practice: grounded conclusions in real data (analyzed 932-row shadow log CSV for skeleton/operator frequencies)",
+    "good_practice: systematically read prompts, YAML, and agent code before concluding",
+    "good_practice: quantified findings rather than asserting vaguely (66% ts_decay_linear, 359 skeletons/769 exprs)",
+    "good_practice: identified root cause across multiple layers instead of surface symptoms",
+    "friction: user interrupted the assistant mid-exploration"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 0,
+    "dominant_pattern": null,
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

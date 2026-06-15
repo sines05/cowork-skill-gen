@@ -1,0 +1,46 @@
+{
+  "name": "verify-end-to-end-pipeline-run",
+  "cluster_id": "endtoend-pipeline-run-feature-verification",
+  "artifact_type": "skill",
+  "confidence": 0.42,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [
+    {
+      "name": "verify",
+      "relation": "see_also",
+      "why": "General 'run the app and observe behavior' verification; this skill specializes it to multi-stage pipeline runs and artifact validation."
+    },
+    {
+      "name": "validate-artifact-against-schema",
+      "relation": "followed_by",
+      "why": "Step 6 hands off to detailed schema/spec conformance checking of produced artifacts."
+    }
+  ],
+  "citations": [
+    "pattern: explore>plan>test>fix>test>cleanup>document",
+    "9667a265-c3fb-43b6-80db-8a79027267d9#2",
+    "friction: one skill cluster timed out at 120s due to slow opus draft call, forcing a re-run",
+    "friction: transient api/system errors during the session",
+    "pattern: read source before editing",
+    "pattern: verified generated artifacts against spec",
+    "pattern: fixed root cause of the one failing cluster by raising draft-call timeout instead of ignoring it",
+    "pattern: cleaned up stale skill folders and temp files",
+    "pattern: updated README and refreshed Metabase snapshot to keep docs/data in sync",
+    "pattern: grounded claims with concrete evidence from real runs"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 1,
+    "dominant_pattern": "explore>plan>test>fix>test>cleanup>document",
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

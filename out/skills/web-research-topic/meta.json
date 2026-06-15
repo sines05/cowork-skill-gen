@@ -1,0 +1,31 @@
+{
+  "name": "web-research-topic",
+  "cluster_id": "web-research",
+  "artifact_type": "skill",
+  "confidence": 0.25,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "related_skills": [
+    {
+      "name": "deep-research",
+      "relation": "see_also",
+      "why": "Heavier fan-out + adversarial verification harness for exhaustive, fact-checked reports; route there when ad-hoc searching is not thorough enough."
+    }
+  ],
+  "citations": [
+    "friction: episode ends on an in-progress toolsearch with no research performed or delivered",
+    "friction: duplicate user prompt suggests a stalled or restarted turn",
+    "pattern: explore (fail)",
+    "4bff37d8-9834-41c7-9db0-304a90294c99#0"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 0,
+    "dominant_pattern": null,
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T01:26:15.757Z"
+}

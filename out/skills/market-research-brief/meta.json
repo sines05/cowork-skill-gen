@@ -1,0 +1,30 @@
+{
+  "name": "market-research-brief",
+  "cluster_id": "market-research-information-request",
+  "artifact_type": "skill",
+  "confidence": 0.28,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [],
+  "citations": [
+    "pattern: broke each request into a tracked task before working",
+    "pattern: ran multiple targeted web searches per request to triangulate data",
+    "pattern: synthesized findings into structured markdown tables for easy comparison",
+    "friction: data freshness/sourcing not verifiable — figures presented as fact without inline citations",
+    "friction: no user acknowledgement of either deliverable before the next request arrived"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 0,
+    "dominant_pattern": null,
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

@@ -1,0 +1,56 @@
+{
+  "skill_name": "answer-code-questions-from-source",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Does our validate_syntax_local() actually validate anything, or is it a no-op?",
+      "expected_output": "Reads the function body and reports whether it performs real validation or returns success unconditionally, citing the source.",
+      "expectations": [
+        "Locates and reads the function's implementation rather than inferring from its name",
+        "States clearly whether it is a stub and what it actually returns",
+        "Cites the file/symbol that grounds the conclusion"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Why is auto_index defaulted to False? Is that a bug?",
+      "expected_output": "Explains the rationale (e.g. avoiding a race condition / redundant indexing work) by reading where the flag is consumed.",
+      "expectations": [
+        "Finds where the flag is used, not just declared",
+        "Gives a concrete reason for the default rather than speculating",
+        "Distinguishes intentional design from a bug"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Which feedback/tool-call mechanisms are basically dead? Prioritize what's worth removing.",
+      "expected_output": "Quantifies tool-call distribution across available sessions and ranks findings by impact rather than listing all equally.",
+      "expectations": [
+        "Computes counts from the real data instead of estimating",
+        "Identifies rarely- or never-used paths",
+        "Prioritizes findings by impact on the relevant metric"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)session|count|distribution|usage"
+        }
+      ]
+    }
+  ]
+}

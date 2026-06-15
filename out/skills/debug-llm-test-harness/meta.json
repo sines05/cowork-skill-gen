@@ -1,0 +1,32 @@
+{
+  "name": "debug-llm-test-harness",
+  "cluster_id": "prompt-analysis-testharness-debugging",
+  "artifact_type": "skill",
+  "confidence": 0.34,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [],
+  "citations": [
+    "ff5fa6fe-0a8a-479e-8b59-f86dee097344#3",
+    "friction: buffered stdout + tail-only pipe produced empty monitoring output, costing a debug cycle",
+    "friction: self-written mock had no type annotation and mismatched name, breaking gemini function-calling schema and hanging the run ~9 min",
+    "friction: overstated finding #1 (legacy-alpha dialect) based on a code path that isn't actually hit at runtime",
+    "pattern: read prompt/config files before claiming",
+    "pattern: validated operator names against syntax.csv with data",
+    "pattern: switched to unbuffered output to get real progress visibility"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 0,
+    "dominant_pattern": null,
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

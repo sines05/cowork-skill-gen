@@ -1,0 +1,42 @@
+{
+  "skill_name": "docs-sync-validate-before-push",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Update all our docs and README to be clearer, concise, and accurate, and delete the brainstorm.md file. Then push and merge everything to main.",
+      "expected_output": "Docs read against source, edited for accuracy, all references to brainstorm.md found and removed, then a pause to confirm before any push/merge to main.",
+      "expectations": [
+        "Reads the docs and the underlying code/config before editing, rather than only rephrasing existing prose",
+        "Searches the repo for all references to the file being deleted and fixes/removes dangling links",
+        "Does not push or merge to main automatically; summarizes changes and asks for confirmation of branch/target first"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)grep|search|references?\\b"
+        },
+        {
+          "kind": "regex",
+          "value": "(?i)confirm|before (push|merg)|review"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The README says updates are 'incremental cost'. Make sure that claim is accurate and fix it if not.",
+      "expected_output": "Inspects the actual caching/resume logic, then corrects or confirms the claim based on what the code does.",
+      "expectations": [
+        "Locates and reads the relevant logic instead of guessing whether the claim is true",
+        "States the corrected, evidence-based claim in the doc"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)cache|resume|logic|code"
+        }
+      ]
+    }
+  ]
+}

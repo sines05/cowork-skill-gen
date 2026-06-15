@@ -1,0 +1,59 @@
+{
+  "skill_name": "browser-info-extraction",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Open my mail in the browser and summarize the 10 most recent emails in detail.",
+      "expected_output": "A detailed summary of exactly the 10 newest emails, produced after confirming the right window/tab and falling back to DOM query if the rows don't appear in page-text.",
+      "expectations": [
+        "Confirms which browser window/tab holds the inbox before extracting",
+        "Falls back from plain page-text to a DOM/JS query when the email rows are not captured, rather than reporting the inbox as empty",
+        "Returns the full count requested (10) by scrolling to capture rows beyond the first screen"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(dom|domquery|querySelector|javascript|inspect)"
+        },
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "In the Excel Online sheet that's open, find the row for student ID 20231234 and tell me their final letter grade.",
+      "expected_output": "The correct letter grade for the requested ID, read via a visual/screenshot tier because the sheet is a canvas/iframe, with the grade re-computed from the formula to confirm the boundary.",
+      "expectations": [
+        "Recognizes that Excel Online content is canvas/iframe-based and unreadable by text/DOM tools, so it uses a visual/screenshot tier instead of chasing a download or export",
+        "Locates the row by the given ID rather than guessing",
+        "Re-computes or cross-checks the grade against the grading rule, paying attention to boundary cases like A vs A+"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(canvas|iframe|screenshot|computer-use|visual)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "That grade looks wrong to me — are you sure it's an A?",
+      "expected_output": "Re-opens the source, re-derives the value, and either confirms or corrects it (e.g. A+ instead of A) with the reasoning, instead of restating the first answer.",
+      "expectations": [
+        "Treats the challenge as a prompt to re-verify against the source rather than defending the first reading",
+        "Re-computes the value from the underlying data/formula and states the corrected result plainly"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(re-?check|re-?compute|re-?verify|let me look again|recheck)"
+        }
+      ]
+    }
+  ]
+}

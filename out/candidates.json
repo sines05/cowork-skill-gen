@@ -1,0 +1,556 @@
+{
+  "candidates": [
+    {
+      "cluster_id": "code-question",
+      "label": "code question",
+      "frequency": 3,
+      "n_sessions": 2,
+      "success_rate": 0,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": null,
+      "risk_flags": [],
+      "est_effort": 450,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.5,
+      "n_judged": 0
+    },
+    {
+      "cluster_id": "feature",
+      "label": "feature",
+      "frequency": 2,
+      "n_sessions": 2,
+      "success_rate": 0.5,
+      "median_friction": 1.5,
+      "has_stable_pattern": false,
+      "dominant_pattern": "explain>commit>plan>edit>test>fix>verify>commit",
+      "risk_flags": [
+        "write-heavy (edits >> reads)"
+      ],
+      "est_effort": 2739,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.5,
+      "n_judged": 2
+    },
+    {
+      "cluster_id": "browser-automation-information-retrieval",
+      "label": "browser automation information retrieval",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 1,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": "explore>navigate>extract>fix>verify",
+      "risk_flags": [],
+      "est_effort": 752,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.6667,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "prompt-engineering-investigation",
+      "label": "prompt engineering investigation",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 1,
+      "median_friction": 1,
+      "has_stable_pattern": false,
+      "dominant_pattern": "explore>analyze>experiment>test>edit>document",
+      "risk_flags": [],
+      "est_effort": 2425,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.6667,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "feature-implementation-design-qa",
+      "label": "feature implementation design qa",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 1,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": "explore>edit>test>qa>analyze",
+      "risk_flags": [],
+      "est_effort": 284,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.6667,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "document-editing-feasibility-analysis",
+      "label": "document editing feasibility analysis",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 1,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": "explore>analyze>plan>edit>research>edit>write",
+      "risk_flags": [],
+      "est_effort": 939,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.6667,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "research-integration",
+      "label": "research integration",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 1,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": "explore>research>edit>test>fix>verify>document>cleanup",
+      "risk_flags": [],
+      "est_effort": 1153,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.6667,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "endtoend-pipeline-run-feature-verification",
+      "label": "endtoend pipeline run feature verification",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 1,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": "explore>plan>test>fix>test>cleanup>document",
+      "risk_flags": [],
+      "est_effort": 4433,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.6667,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "data-cleaning-report-generation",
+      "label": "data cleaning report generation",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 1,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": "plan>explore>edit>test>report",
+      "risk_flags": [],
+      "est_effort": 267,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.6667,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "web-research",
+      "label": "web research",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 0,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": null,
+      "risk_flags": [],
+      "est_effort": 9,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.3333,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "market-research-information-request",
+      "label": "market research information request",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 0,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": null,
+      "risk_flags": [],
+      "est_effort": 513,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.5,
+      "n_judged": 0
+    },
+    {
+      "cluster_id": "competitive-research-browser-automation",
+      "label": "competitive research browser automation",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 0,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": null,
+      "risk_flags": [],
+      "est_effort": 592,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.3333,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "diagnostic-investigation",
+      "label": "diagnostic investigation",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 0,
+      "median_friction": 1,
+      "has_stable_pattern": false,
+      "dominant_pattern": null,
+      "risk_flags": [],
+      "est_effort": 95,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.5,
+      "n_judged": 0
+    },
+    {
+      "cluster_id": "prompt-analysis-testharness-debugging",
+      "label": "prompt analysis testharness debugging",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 0,
+      "median_friction": 1,
+      "has_stable_pattern": false,
+      "dominant_pattern": null,
+      "risk_flags": [],
+      "est_effort": 1422,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.3333,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "documentation-update-feature-config",
+      "label": "documentation update feature config",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 0,
+      "median_friction": 4,
+      "has_stable_pattern": false,
+      "dominant_pattern": null,
+      "risk_flags": [],
+      "est_effort": 3790,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.3333,
+      "n_judged": 1
+    },
+    {
+      "cluster_id": "greeting",
+      "label": "greeting",
+      "frequency": 1,
+      "n_sessions": 1,
+      "success_rate": 0,
+      "median_friction": 0,
+      "has_stable_pattern": false,
+      "dominant_pattern": null,
+      "risk_flags": [],
+      "est_effort": 51,
+      "recommended_intervention": "none",
+      "low_confidence": true,
+      "success_rate_smoothed": 0.5,
+      "n_judged": 0
+    }
+  ],
+  "contrasts": {
+    "browser-automation-information-retrieval": {
+      "successPatterns": [
+        [
+          "explore>navigate>extract>fix>verify",
+          1
+        ]
+      ],
+      "failPatterns": [],
+      "recurringFriction": [
+        [
+          "download blocked by safety filter and window focus tangled between two brave windows",
+          1
+        ],
+        [
+          "excel online rendered as canvas/iframe unreadable by text tools, forcing a long detour through download attempts and computer-use",
+          1
+        ],
+        [
+          "initial page-text extraction failed to capture email rows, requiring dom-query fallbacks",
+          1
+        ],
+        [
+          "stated wrong letter grade initially (a instead of a+)",
+          1
+        ]
+      ]
+    },
+    "web-research": {
+      "successPatterns": [],
+      "failPatterns": [
+        [
+          "explore",
+          1
+        ]
+      ],
+      "recurringFriction": [
+        [
+          "duplicate user prompt suggests a stalled or restarted turn",
+          1
+        ],
+        [
+          "episode ends on an in-progress toolsearch with no research performed or delivered",
+          1
+        ]
+      ]
+    },
+    "market-research-information-request": {
+      "successPatterns": [],
+      "failPatterns": [],
+      "recurringFriction": [
+        [
+          "data freshness/sourcing not verifiable — figures presented as fact without inline citations",
+          1
+        ],
+        [
+          "no user acknowledgement of either deliverable before the next request arrived",
+          1
+        ]
+      ]
+    },
+    "competitive-research-browser-automation": {
+      "successPatterns": [],
+      "failPatterns": [
+        [
+          "plan>explore>search>edit>present",
+          1
+        ]
+      ],
+      "recurringFriction": [
+        [
+          "could not save chrome-extension screenshots to the sandbox filesystem, so the core 'save screenshots to folder' deliverable was not met",
+          1
+        ],
+        [
+          "heavy pages required repeated waits/scrolls and retried capture attempts",
+          1
+        ],
+        [
+          "target real-estate sites rendered pricing tables as images/canvas/video, defeating clean capture",
+          1
+        ]
+      ]
+    },
+    "diagnostic-investigation": {
+      "successPatterns": [],
+      "failPatterns": [],
+      "recurringFriction": [
+        [
+          "user interrupted the assistant mid-exploration",
+          1
+        ]
+      ]
+    },
+    "feature": {
+      "successPatterns": [
+        [
+          "explain>commit>plan>edit>test>fix>verify>commit",
+          1
+        ]
+      ],
+      "failPatterns": [
+        [
+          "explore>qa>plan>edit>test>fix",
+          1
+        ]
+      ],
+      "recurringFriction": [
+        [
+          "delivered feature (structureregistry structural-dedup quota) does not obviously match the explicit request to change '6 seed -> 6 bucket'",
+          1
+        ],
+        [
+          "exploration appeared to hang, forcing a user interrupt",
+          1
+        ],
+        [
+          "transient socket error on the 4th cluster during regeneration required a re-run",
+          1
+        ]
+      ]
+    },
+    "code-question": {
+      "successPatterns": [],
+      "failPatterns": [],
+      "recurringFriction": [
+        [
+          "first grep was noisy and had to be re-run with a tighter filter",
+          1
+        ],
+        [
+          "transient tool/classifier unavailability forced a retry on the log-cleanup command",
+          1
+        ]
+      ]
+    },
+    "prompt-analysis-testharness-debugging": {
+      "successPatterns": [],
+      "failPatterns": [
+        [
+          "explore>analyze>hypothesize>correct>build-harness>test>diagnose>fix>test>report",
+          1
+        ]
+      ],
+      "recurringFriction": [
+        [
+          "buffered stdout + tail-only pipe produced empty monitoring output, costing a debug cycle",
+          1
+        ],
+        [
+          "overstated finding #1 (legacy-alpha dialect) based on a code path that isn't actually hit at runtime",
+          1
+        ],
+        [
+          "self-written mock had no type annotation and mismatched name, breaking gemini function-calling schema and hanging the run ~9 min",
+          1
+        ]
+      ]
+    },
+    "prompt-engineering-investigation": {
+      "successPatterns": [
+        [
+          "explore>analyze>experiment>test>edit>document",
+          1
+        ]
+      ],
+      "failPatterns": [],
+      "recurringFriction": [
+        [
+          "output file was hidden by .gitignore *.txt rule, requiring several attempts to surface",
+          1
+        ],
+        [
+          "user repeatedly could not see the generated alphas file",
+          1
+        ]
+      ]
+    },
+    "feature-implementation-design-qa": {
+      "successPatterns": [
+        [
+          "explore>edit>test>qa>analyze",
+          1
+        ]
+      ],
+      "failPatterns": [],
+      "recurringFriction": []
+    },
+    "document-editing-feasibility-analysis": {
+      "successPatterns": [
+        [
+          "explore>analyze>plan>edit>research>edit>write",
+          1
+        ]
+      ],
+      "failPatterns": [],
+      "recurringFriction": [
+        [
+          "original report contained an incorrect session path and conflated platforms, requiring multiple corrective edits",
+          1
+        ],
+        [
+          "transient api/socket error interrupted an edit mid-stream",
+          1
+        ]
+      ]
+    },
+    "research-integration": {
+      "successPatterns": [
+        [
+          "explore>research>edit>test>fix>verify>document>cleanup",
+          1
+        ]
+      ],
+      "failPatterns": [],
+      "recurringFriction": [
+        [
+          "first verification query used wrong column names / wrong table, requiring schema lookup and rework",
+          1
+        ],
+        [
+          "initial edits were written to non-existent ubuntu host paths (/home/son/...) before realizing host had changed to windows",
+          1
+        ],
+        [
+          "repo typecheck fails",
+          1
+        ]
+      ]
+    },
+    "endtoend-pipeline-run-feature-verification": {
+      "successPatterns": [
+        [
+          "explore>plan>test>fix>test>cleanup>document",
+          1
+        ]
+      ],
+      "failPatterns": [],
+      "recurringFriction": [
+        [
+          "one skill cluster timed out at 120s due to slow opus draft call, forcing a re-run",
+          1
+        ],
+        [
+          "transient api/system errors during the session",
+          1
+        ]
+      ]
+    },
+    "documentation-update-feature-config": {
+      "successPatterns": [],
+      "failPatterns": [
+        [
+          "explore>read>edit>test>fix>qa",
+          1
+        ]
+      ],
+      "recurringFriction": [
+        [
+          "multiple correction turns redirected the work",
+          1
+        ],
+        [
+          "transient socket/api error interrupted mid-task requiring 'tiếp tục'",
+          1
+        ],
+        [
+          "user rejected the push/merge-to-main part of the original ask",
+          1
+        ]
+      ]
+    },
+    "greeting": {
+      "successPatterns": [],
+      "failPatterns": [],
+      "recurringFriction": []
+    },
+    "data-cleaning-report-generation": {
+      "successPatterns": [
+        [
+          "plan>explore>edit>test>report",
+          1
+        ]
+      ],
+      "failPatterns": [],
+      "recurringFriction": [
+        [
+          "assistant appears to have hardcoded raw rows into the cleaning script rather than reading the csv dynamically",
+          1
+        ]
+      ]
+    }
+  },
+  "generated_at": "2026-06-15T03:01:30.336Z"
+}

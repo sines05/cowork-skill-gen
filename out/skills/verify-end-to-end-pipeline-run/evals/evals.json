@@ -1,0 +1,59 @@
+{
+  "skill_name": "verify-end-to-end-pipeline-run",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run the whole pipeline end to end and confirm it works. One stage timed out last time.",
+      "expected_output": "Pipeline run completed; the timed-out stage diagnosed as a slow-but-valid call, its timeout raised, re-run proven green, artifacts validated, and a clear pass/fail report grounded in actual output.",
+      "expectations": [
+        "Reads the relevant stage source before changing the timeout",
+        "Distinguishes a transient error from a systematic timeout and fixes the root cause rather than retrying blindly",
+        "Re-runs after the fix to prove it, instead of declaring success on the errored run",
+        "Validates produced artifacts against their spec before reporting done"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)root cause|timeout|re-?run"
+        },
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The pipeline run finished without errors — are the generated output files actually valid?",
+      "expected_output": "Each artifact is opened and checked against its schema/template; missing fields or placeholders are flagged rather than assuming exit-0 means correct.",
+      "expectations": [
+        "Treats a clean exit as necessary but not sufficient",
+        "Checks artifact contents against the expected shape/spec, not just their existence"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)schema|spec|field|valid"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We just got a clean end-to-end run. Wrap it up.",
+      "expected_output": "Stale output folders and temp files removed, and docs/dashboard refreshed to match the new state, with an evidence-grounded summary.",
+      "expectations": [
+        "Removes stale or partial outputs from prior runs",
+        "Syncs docs/dashboards so they don't drift from the run's reality"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)clean|stale|temp|doc|dashboard|sync"
+        }
+      ]
+    }
+  ]
+}

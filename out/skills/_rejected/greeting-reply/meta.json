@@ -1,0 +1,29 @@
+{
+  "name": "greeting-reply",
+  "cluster_id": "greeting",
+  "artifact_type": "sop",
+  "confidence": 0.18,
+  "gate": {
+    "status": "reject",
+    "issues": [
+      "REJECT: no citation grounds the skill in cluster evidence"
+    ]
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [],
+  "citations": [
+    "pattern: greeting cluster (cluster_id=greeting, label=greeting)",
+    "pattern: recommended_intervention=none, has_stable_pattern=false"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 0,
+    "dominant_pattern": null,
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

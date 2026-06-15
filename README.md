@@ -158,6 +158,13 @@ bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   #
 
 ## Dashboards (leadership BI)
 
+![Cowork leadership dashboard](docs/images/dashboard.png)
+
+*The Metabase "Cowork — Leadership" dashboard: Overview KPIs, the Cost & tokens band
+(LLM spend $4.76 / 142k tokens this run, split by phase & model), outcomes, and the
+generated-skills table.*
+
+
 The dashboard is a **separate presentation layer** — not the Bun engine. Primary = **Metabase**
 (a real BI tool: self-serve, auth, scheduled reports). `bun run bi:provision` builds it as
 config-as-code (16 cards, idempotent) in clearly-banded sections:

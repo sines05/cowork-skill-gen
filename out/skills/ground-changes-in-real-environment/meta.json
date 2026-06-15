@@ -1,0 +1,33 @@
+{
+  "name": "ground-changes-in-real-environment",
+  "cluster_id": "research-integration",
+  "artifact_type": "skill",
+  "confidence": 0.38,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [],
+  "citations": [
+    "9667a265-c3fb-43b6-80db-8a79027267d9#1",
+    "pattern: explore>research>edit>test>fix>verify>document>cleanup",
+    "friction: first verification query used wrong column names / wrong table, requiring schema lookup and rework",
+    "friction: initial edits were written to non-existent ubuntu host paths before realizing host had changed to windows",
+    "friction: repo typecheck fails",
+    "pattern: investigated real filesystem instead of guessing storage paths",
+    "pattern: verified data extraction against real Cowork sessions, not just 'runs without error'",
+    "pattern: correctly diagnosed typecheck failure as pre-existing repo config issue, not own change"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 1,
+    "dominant_pattern": "explore>research>edit>test>fix>verify>document>cleanup",
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

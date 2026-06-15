@@ -1,0 +1,47 @@
+{
+  "skill_name": "browser-extract-with-fallback-tiers",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Open my email in the browser that's already logged in and give me a detailed summary of the 10 most recent messages.",
+      "expected_output": "A per-message summary of the 10 newest emails, extracted via DOM/text and not a guess, after confirming the right window.",
+      "expectations": [
+        "Identifies and acts on the correct already-open, logged-in browser window",
+        "Falls back from page-text to a DOM query if the message rows are not captured by plain text extraction",
+        "Summarizes each of the 10 messages from actually-extracted content rather than fabricating"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)dom|querySelector|page text|extract"
+        },
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Find student ID 12345 in the grades spreadsheet open in my browser and tell me their final letter grade.",
+      "expected_output": "The correct letter grade for the requested ID, derived from the row's raw scores and the grading rule, after reading canvas/iframe content via screenshot.",
+      "expectations": [
+        "Uses the provided ID to locate the specific row instead of guessing",
+        "Recognizes a canvas/iframe-rendered spreadsheet is unreadable by text/DOM and switches to a screenshot/vision tier",
+        "Re-derives the letter grade from raw scores and checks the boundary bucket (e.g. A vs A+)"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)screenshot|canvas|iframe|vision|computer-use"
+        },
+        {
+          "kind": "contains",
+          "value": "grade"
+        }
+      ]
+    }
+  ]
+}

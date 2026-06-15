@@ -1,0 +1,42 @@
+{
+  "name": "implement-approved-feature",
+  "cluster_id": "feature",
+  "artifact_type": "skill",
+  "confidence": 0.45,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": true,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [
+    {
+      "name": "code-review",
+      "relation": "followed_by",
+      "why": "Review the write-heavy diff for correctness and scope before merging."
+    },
+    {
+      "name": "verify",
+      "relation": "followed_by",
+      "why": "Run the app/end-to-end to confirm the feature actually works, not just unit tests."
+    }
+  ],
+  "citations": [
+    "9667a265-c3fb-43b6-80db-8a79027267d9#3",
+    "ff5fa6fe-0a8a-479e-8b59-f86dee097344#1",
+    "pattern: explain>commit>plan>edit>test>fix>verify>commit",
+    "friction: delivered feature does not obviously match the explicit request",
+    "friction: exploration appeared to hang, forcing a user interrupt",
+    "friction: transient socket error on the 4th cluster during regeneration required a re-run"
+  ],
+  "evidence_summary": {
+    "frequency": 2,
+    "n_sessions": 2,
+    "success_rate": 0.5,
+    "dominant_pattern": "explain>commit>plan>edit>test>fix>verify>commit",
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T03:01:30.553Z"
+}

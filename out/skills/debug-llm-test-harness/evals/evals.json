@@ -1,0 +1,63 @@
+{
+  "skill_name": "debug-llm-test-harness",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "My eval harness hangs for about 9 minutes whenever it reaches the model call, then times out. I wrote my own mock for the LLM client. What should I check?",
+      "expected_output": "Points at the self-written mock's signature/annotations breaking the function-calling schema as the prime suspect, and explains how to verify.",
+      "expectations": [
+        "Identifies the test mock's signature/type-annotations/name as a likely cause of an invalid function-calling schema",
+        "Explains that an invalid tool schema can cause a hang rather than a fast error",
+        "Recommends making the mock faithfully match the real call's name, params, and annotations"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(annotat|signature|schema|function[- ]calling|tool)"
+        },
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "My simulation runner prints nothing while it's working — I pipe it through tail and the output is empty until the very end. How do I get live progress?",
+      "expected_output": "Diagnoses buffered stdout + tail-only pipe and recommends unbuffered/line-buffered output.",
+      "expectations": [
+        "Explains that stdout buffering plus a tail-only pipe hides progress",
+        "Recommends unbuffered or line-buffered output (python -u / stdbuf / PYTHONUNBUFFERED)"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(unbuffer|python -u|stdbuf|PYTHONUNBUFFERED|line[- ]buffer)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I think this prompt uses a legacy dialect and an extra syntax-validation step. Can you confirm before I write it up?",
+      "expected_output": "Insists on reading the prompt/config and confirming the code path actually runs before asserting it, and validating names against the data table.",
+      "expectations": [
+        "Says to read the prompt/config and the reference data before claiming behavior",
+        "Stresses confirming the code path is actually reached at runtime, not just present in source",
+        "Advises reporting at evidence-supported confidence and retracting if unverified"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(runtime|reached|executed|code path|verify|confirm)"
+        },
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    }
+  ]
+}

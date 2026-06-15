@@ -1,0 +1,38 @@
+{
+  "name": "browser-extract-with-fallback-tiers",
+  "cluster_id": "browser-automation-information-retrieval",
+  "artifact_type": "skill",
+  "confidence": 0.34,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "related_skills": [
+    {
+      "name": "browser-login",
+      "relation": "depends_on",
+      "why": "The target app must be authenticated in an open window before this skill can navigate and extract."
+    },
+    {
+      "name": "summarize-content",
+      "relation": "followed_by",
+      "why": "Once rows/records are extracted, the natural next step is condensing them into a summary for the user."
+    }
+  ],
+  "citations": [
+    "43255f21-d342-4b0e-b8c1-2f4fd77d364c#0",
+    "pattern: explore>navigate>extract>fix>verify",
+    "friction: excel online rendered as canvas/iframe unreadable by text tools, forcing a long detour through download attempts and computer-use",
+    "friction: initial page-text extraction failed to capture email rows, requiring dom-query fallbacks",
+    "friction: download blocked by safety filter and window focus tangled between two brave windows",
+    "friction: stated wrong letter grade initially (a instead of a+)"
+  ],
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 1,
+    "dominant_pattern": "explore>navigate>extract>fix>verify",
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T01:24:32.985Z"
+}

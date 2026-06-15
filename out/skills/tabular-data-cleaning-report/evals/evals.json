@@ -1,0 +1,47 @@
+{
+  "skill_name": "tabular-data-cleaning-report",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I have competitor_prices.csv in my Downloads — a real-estate competitor price sheet a colleague sent, the data is pretty messy. Please read it and standardize it into a clean table (project, price, unit, date), and tell me anything you had to guess.",
+      "expected_output": "A clean output file plus a cleaning report listing the per-column rules, change counts, and an explicit list of ambiguous cases (units, partial dates) with the assumption made for each.",
+      "expectations": [
+        "Reads the actual file by path and operates on all rows rather than hardcoding sample rows",
+        "Normalizes prices/units/dates with explicit deterministic rules",
+        "Surfaces ambiguous units and partial dates to the user with the assumption taken, instead of silently deciding",
+        "Writes a new clean file without overwriting the source"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "code_block"
+        },
+        {
+          "kind": "regex",
+          "value": "(?i)assum|ambig|edge case|review"
+        },
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Clean up the sales export in my Documents folder and give me a tidy version.",
+      "expected_output": "Requests access to / confirms the file path before reading, inspects the raw structure, then cleans dynamically and reports changes.",
+      "expectations": [
+        "Confirms or requests access to the file location before attempting to clean",
+        "Inspects the raw structure before defining the target schema",
+        "Produces a change summary grounded in counts, not vague claims"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)access|path|read.*file|schema|column"
+        }
+      ]
+    }
+  ]
+}

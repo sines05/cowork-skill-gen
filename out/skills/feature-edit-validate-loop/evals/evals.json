@@ -1,0 +1,43 @@
+{
+  "skill_name": "feature-edit-validate-loop",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We rebuild a search index after edits. Should the tool index automatically on every change, or stay manual? Recommend an approach.",
+      "expected_output": "A balanced answer giving auto vs. manual options with pros/risks and a recommendation, not an immediate rewrite.",
+      "expectations": [
+        "Presents at least two options (automatic vs. manual indexing) with concrete pros and risks for each",
+        "Ends with a clear recommendation rather than jumping straight to implementing a refactor",
+        "Notes the cost/staleness trade-off of auto-indexing (e.g. extra work per edit vs. risk of a stale index)"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(pros?|risk|trade-?off|downside)"
+        },
+        {
+          "kind": "min_length",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The API client throws a confusing config error. Find the real cause and fix it.",
+      "expected_output": "Traces the error from the client through the config/tuner layer, names where the cause lives, and fixes at the source.",
+      "expectations": [
+        "Reads the implicated files before proposing a change rather than guessing",
+        "Traces the symptom across more than one file to locate the originating cause",
+        "Proposes the fix at the root cause and validates by running the affected code path"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "regex",
+          "value": "(?i)(root cause|origin|traces?|across)"
+        }
+      ]
+    }
+  ]
+}
