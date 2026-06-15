@@ -13,6 +13,7 @@ import type {
   DebateResult,
 } from "../core/types.ts";
 import { defaultDbPath } from "../core/paths.ts";
+import { median } from "../core/util.ts";
 
 export const DEFAULT_DB_PATH = defaultDbPath;
 
@@ -398,7 +399,138 @@ export function upsertSkillTelemetry(db: Database, r: SkillTelemetryRecord): voi
   });
 }
 
+// ── Shadow closed-loop (causal before/after on future tasks) ──────────────────
+
+// Outcome stats for one task_type, optionally bounded by episode start time. Excludes
+// qa_only from the success-rate denominator (consistent with the miner). Friction =
+// median(n_corrections + n_interruptions). started_at is an ISO string, so lexical
+// comparison is chronological.
+export interface TaskTypeStats {
+  n: number; // judged episodes in the window
+  successRate: number; // success / (judged, excluding qa_only)
+  medianFriction: number;
+}
+
+export function taskTypeStats(
+  db: Database,
+  taskType: string,
+  window: { before?: string; after?: string } = {}
+): TaskTypeStats {
+  let where = "l.task_type = ?";
+  const args: any[] = [taskType];
+  if (window.before) { where += " AND e.started_at < ?"; args.push(window.before); }
+  if (window.after) { where += " AND e.started_at >= ?"; args.push(window.after); }
+  const rows = db
+    .query(
+      `SELECT l.outcome AS outcome,
+              COALESCE(e.n_corrections,0) + COALESCE(e.n_interruptions,0) AS friction
+       FROM episode_labels l JOIN episodes e ON e.episode_id = l.episode_id
+       WHERE ${where}`
+    )
+    .all(...args) as { outcome: string; friction: number }[];
+  const denom = rows.filter((r) => r.outcome !== "qa_only");
+  const nSucc = denom.filter((r) => r.outcome === "success").length;
+  return {
+    n: rows.length,
+    successRate: denom.length ? nSucc / denom.length : 0,
+    medianFriction: median(rows.map((r) => Number(r.friction) || 0)),
+  };
+}
+
+// The modal (most common) task_type among a set of episodes — used to derive which task
+// family a skill's cluster represents, so we can match future episodes of the same family.
+export function modalTaskType(db: Database, episodeIds: string[]): string | null {
+  if (episodeIds.length === 0) return null;
+  const ph = episodeIds.map(() => "?").join(",");
+  const row = db
+    .query(
+      `SELECT task_type, COUNT(*) AS c FROM episode_labels
+       WHERE episode_id IN (${ph}) AND task_type IS NOT NULL AND task_type <> ''
+       GROUP BY task_type ORDER BY c DESC LIMIT 1`
+    )
+    .get(...episodeIds) as { task_type: string } | undefined;
+  return row?.task_type ?? null;
+}
+
+export interface SkillDeployment {
+  skill: string;
+  clusterId: string | null;
+  taskType: string;
+  deployedAt: string;
+  preN: number;
+  preSuccessRate: number;
+  preMedianFriction: number;
+  note: string;
+}
+
+export function upsertSkillDeployment(db: Database, d: SkillDeployment): void {
+  db.query(
+    `INSERT INTO skill_deployments (skill, cluster_id, task_type, deployed_at,
+       pre_n, pre_success_rate, pre_median_friction, note)
+     VALUES ($s,$c,$tt,$da,$pn,$psr,$pmf,$note)
+     ON CONFLICT(skill) DO UPDATE SET
+       cluster_id=excluded.cluster_id, task_type=excluded.task_type, deployed_at=excluded.deployed_at,
+       pre_n=excluded.pre_n, pre_success_rate=excluded.pre_success_rate,
+       pre_median_friction=excluded.pre_median_friction, note=excluded.note`
+  ).run({
+    $s: d.skill, $c: d.clusterId, $tt: d.taskType, $da: d.deployedAt,
+    $pn: d.preN, $psr: d.preSuccessRate, $pmf: d.preMedianFriction, $note: d.note,
+  });
+}
+
+export function getSkillDeployment(db: Database, skill: string): SkillDeployment | null {
+  const r = db
+    .query(`SELECT * FROM skill_deployments WHERE skill = ?`)
+    .get(skill) as any;
+  if (!r) return null;
+  return {
+    skill: r.skill, clusterId: r.cluster_id, taskType: r.task_type, deployedAt: r.deployed_at,
+    preN: r.pre_n, preSuccessRate: r.pre_success_rate, preMedianFriction: r.pre_median_friction,
+    note: r.note ?? "",
+  };
+}
+
+export interface ShadowObs {
+  skill: string;
+  observedAt: string;
+  postN: number;
+  postSuccessRate: number;
+  postMedianFriction: number;
+  deltaSuccessRate: number;
+  deltaMedianFriction: number;
+}
+
+export function upsertShadowObs(db: Database, o: ShadowObs): void {
+  db.query(
+    `INSERT INTO skill_shadow_obs (obs_id, skill, observed_at, post_n, post_success_rate,
+       post_median_friction, delta_success_rate, delta_median_friction)
+     VALUES ($id,$s,$oa,$pn,$psr,$pmf,$dsr,$dmf)
+     ON CONFLICT(obs_id) DO UPDATE SET
+       post_n=excluded.post_n, post_success_rate=excluded.post_success_rate,
+       post_median_friction=excluded.post_median_friction,
+       delta_success_rate=excluded.delta_success_rate,
+       delta_median_friction=excluded.delta_median_friction`
+  ).run({
+    $id: `${o.skill}@${o.observedAt}`, $s: o.skill, $oa: o.observedAt, $pn: o.postN,
+    $psr: o.postSuccessRate, $pmf: o.postMedianFriction,
+    $dsr: o.deltaSuccessRate, $dmf: o.deltaMedianFriction,
+  });
+}
+
 // ── Clusters ──────────────────────────────────────────────────────────────────
+export function getClusterMembers(db: Database, clusterId: string): string[] {
+  const r = db
+    .query(`SELECT member_episode_ids_json FROM task_clusters WHERE cluster_id = ?`)
+    .get(clusterId) as { member_episode_ids_json?: string } | undefined;
+  if (!r?.member_episode_ids_json) return [];
+  try {
+    const v = JSON.parse(r.member_episode_ids_json);
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export function upsertCluster(db: Database, c: TaskCluster): void {
   db.query(
     `INSERT INTO task_clusters (cluster_id, label, member_episode_ids_json)

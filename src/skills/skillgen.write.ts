@@ -7,9 +7,10 @@
 import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { redactText } from "../core/redact.ts";
-import type { Draft } from "./skillgen.draft.ts";
+import type { Draft, EvalCase } from "./skillgen.draft.ts";
 import type { Evidence } from "./skillgen.evidence.ts";
 import type { GateResult } from "./skillgen.gate.ts";
+import type { EvalProvenance } from "./skillgen.heldout.ts";
 
 // Bundled license, referenced by the SKILL.md `license` frontmatter (mirrors how Anthropic's
 // own skills ship a LICENSE.txt). Adjust the holder/terms to your org's policy.
@@ -87,8 +88,14 @@ export function writeSkillFolder(
   draft: Draft,
   ev: Evidence,
   gate: GateResult,
-  generatedAt: string
+  generatedAt: string,
+  evalOpts?: { evals?: EvalCase[]; provenance?: EvalProvenance }
 ): string {
+  // The back-test cases written to disk: prefer the independent HELD-OUT evals (tasks the
+  // skill never saw) over the LLM's self-authored in-distribution evals. Provenance is
+  // recorded in meta.json so the eval source is auditable, never assumed.
+  const evalsToWrite =
+    evalOpts?.evals && evalOpts.evals.length ? evalOpts.evals : draft.evals;
   const dir = join(baseDir, draft.name);
   // fresh each run for this skill (idempotent)
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
@@ -124,7 +131,13 @@ export function writeSkillFolder(
     JSON.stringify(
       {
         skill_name: draft.name,
-        evals: draft.evals.map((e, i) => ({
+        // Provenance of the back-test set (held-out vs in-distribution) travels WITH the
+        // cases so skilleval and any reviewer can see whether the uplift number is honest.
+        eval_provenance: evalOpts?.provenance ?? {
+          source: "in-distribution",
+          note: "LLM-authored evals (no held-out split was available).",
+        },
+        evals: evalsToWrite.map((e, i) => ({
           id: i + 1,
           prompt: e.prompt,
           expected_output: e.expected_output,
@@ -154,6 +167,10 @@ export function writeSkillFolder(
         execution: { isolated: isIsolated(draft), recommended_model: "sonnet" },
         related_skills: draft.related_skills,
         citations: draft.citations,
+        // How the Gate 2-B back-test set was built: held-out (tasks the skill never saw —
+        // a real generalisation test) or in-distribution fallback. The skill was drafted
+        // ONLY from provenance.train_episode_ids; evals come from held_out_episode_ids.
+        eval_provenance: evalOpts?.provenance ?? null,
         evidence_summary: {
           frequency: ev.frequency,
           n_sessions: ev.n_sessions,

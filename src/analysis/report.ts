@@ -128,7 +128,12 @@ function pickExemplars(
 function fmtExemplar(r: ExemplarRow | null): string {
   if (!r) return "_none available_";
   const fric = (r.n_corrections ?? 0) + (r.n_interruptions ?? 0);
-  return `\`${r.episode_id}\` : ${oneLine(r.first_prompt, 120)} _(outcome: ${r.outcome ?? "unjudged"}, friction: ${fric})_`;
+  // Defensive: an older DB may still hold a first_prompt that is an interruption marker
+  // or empty (segment.ts now avoids this at the source). Don't print "[Request
+  // interrupted by user]" as if it were the task — show an honest placeholder instead.
+  const raw = oneLine(r.first_prompt, 120);
+  const prompt = !raw || raw.startsWith("[Request interrupted") ? "_(opening turn had no task text)_" : raw;
+  return `\`${r.episode_id}\` : ${prompt} _(outcome: ${r.outcome ?? "unjudged"}, friction: ${fric})_`;
 }
 
 function fmtPatternList(pairs: [string, number][], limit = 3): string {

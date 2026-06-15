@@ -18,6 +18,31 @@ export function median(xs: number[]): number {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+// Wilson score interval for a binomial proportion. Far better than normal-approx at small
+// N (the regime calibration lives in: "82% on 11" is meaningless without a band). Returns
+// the point estimate + [lo, hi] at the given confidence (z=1.96 ≈ 95%). n=0 → all zeros.
+export function wilson(
+  successes: number,
+  n: number,
+  z = 1.96
+): { p: number; lo: number; hi: number } {
+  if (n <= 0) return { p: 0, lo: 0, hi: 0 };
+  const phat = successes / n;
+  const z2 = z * z;
+  const denom = 1 + z2 / n;
+  const center = (phat + z2 / (2 * n)) / denom;
+  const margin = (z * Math.sqrt((phat * (1 - phat) + z2 / (4 * n)) / n)) / denom;
+  return { p: phat, lo: Math.max(0, center - margin), hi: Math.min(1, center + margin) };
+}
+
+// Format an agreement count with its Wilson 95% CI, e.g. "9/11 (82%, 95% CI 52–95%)".
+export function fmtRateCI(successes: number, n: number): string {
+  if (n <= 0) return "—";
+  const w = wilson(successes, n);
+  const pct = (x: number) => (x * 100).toFixed(0);
+  return `${successes}/${n} (${pct(w.p)}%, 95% CI ${pct(w.lo)}–${pct(w.hi)}%)`;
+}
+
 // Parse a .jsonl transcript into ordered RawEvents (skips unparseable lines).
 export async function readEvents(jsonlPath: string): Promise<RawEvent[]> {
   const text = await Bun.file(jsonlPath).text();

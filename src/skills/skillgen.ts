@@ -47,6 +47,11 @@ import {
 } from "./skillgen.draft.ts";
 import { gate2A } from "./skillgen.gate.ts";
 import { writeSkillFolder } from "./skillgen.write.ts";
+import {
+  splitMembers,
+  buildHeldOutEvals,
+  type EvalProvenance,
+} from "./skillgen.heldout.ts";
 
 const SKILLGEN_PROMPT_PATH = join(promptsDir, "skillgen.md");
 const DEFAULT_OUT_DIR = join(outDir, "skills");
@@ -171,13 +176,35 @@ async function main() {
 
   for (const cand of worth) {
     const members = membersById.get(cand.cluster_id) ?? [];
-    const { evidence, redactedCount } = await assembleEvidence(db, cand, members);
-    const evidenceHash = sha256(JSON.stringify(evidence));
+    // Hold-out split: the skill is drafted ONLY from `train`; `heldOut` episodes are kept
+    // hidden and their real task prompts become the back-test (Gate 2-B). This is what makes
+    // the uplift number honest — the skill is tested on tasks it never saw, not on the
+    // exemplars it was built from. Evidence + grounding therefore use `train`, not `members`.
+    const { train, heldOut } = splitMembers(members);
+    const { evidence, redactedCount } = await assembleEvidence(db, cand, train);
+    // Evidence hash folds in the split so changing train/held-out re-drafts (cache correctness).
+    const evidenceHash = sha256(JSON.stringify({ evidence, train, heldOut }));
+
+    const heldOutEvals = buildHeldOutEvals(db, heldOut, evidence.good_practices);
+    const evalProvenance: EvalProvenance = {
+      source: heldOutEvals.length ? "held-out" : "in-distribution",
+      n_train: train.length,
+      n_held_out: heldOut.length,
+      held_out_episode_ids: heldOut,
+      train_episode_ids: train,
+      note: heldOutEvals.length
+        ? "Eval prompts are real held-out tasks the skill was not drafted from (generalisation test)."
+        : "Cluster too thin to spare a held-out episode; evals fall back to the LLM's in-distribution cases (NOT a generalisation test).",
+    };
 
     if (flags.noLlm) {
       console.log(`\n===== ${cand.label} (${cand.cluster_id}) =====`);
       console.log(JSON.stringify(evidence, null, 2));
       console.log(`[redacted ${redactedCount} item(s) from evidence]`);
+      console.log(
+        `[hold-out: ${train.length} train / ${heldOut.length} held-out → ` +
+          `${evalProvenance.source} evals (${heldOutEvals.length} case(s))]`
+      );
       continue;
     }
 
@@ -208,17 +235,19 @@ async function main() {
       continue;
     }
 
-    const gate = gate2A(draft, evidence, members);
+    // Grounding is checked against TRAIN (what the skill was actually built from).
+    const gate = gate2A(draft, evidence, train);
+    const evalOpts = { evals: heldOutEvals, provenance: evalProvenance };
 
     let outPath = "";
     if (gate.status === "reject") {
       rejected++;
-      outPath = writeSkillFolder(join(flags.outDir, "_rejected"), draft, evidence, gate, generatedAt);
+      outPath = writeSkillFolder(join(flags.outDir, "_rejected"), draft, evidence, gate, generatedAt, evalOpts);
       log(`  ✗ ${draft.name}: REJECT — ${gate.issues.filter((i) => i.startsWith("REJECT")).join("; ")}`);
     } else {
       drafted++;
-      outPath = writeSkillFolder(flags.outDir, draft, evidence, gate, generatedAt);
-      log(`  ✓ ${draft.name} [${draft.artifact_type}] gate=${gate.status}${gate.issues.length ? ` (${gate.issues.length} note)` : ""}`);
+      outPath = writeSkillFolder(flags.outDir, draft, evidence, gate, generatedAt, evalOpts);
+      log(`  ✓ ${draft.name} [${draft.artifact_type}] gate=${gate.status} · ${evalProvenance.source} evals${gate.issues.length ? ` (${gate.issues.length} note)` : ""}`);
     }
 
     const rec: SkillDraftRecord = {

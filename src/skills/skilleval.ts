@@ -102,28 +102,42 @@ function resolveSkillDir(skill: string): string {
   return join(SKILLS_DIR, skill);
 }
 
-function loadSkill(dir: string): { body: string; evals: EvalCase[]; name: string } {
+interface EvalProvenance {
+  source?: string;
+  n_held_out?: number;
+  n_train?: number;
+  note?: string;
+}
+
+function loadSkill(dir: string): {
+  body: string;
+  evals: EvalCase[];
+  name: string;
+  provenance: EvalProvenance | null;
+} {
   const md = readFileSync(join(dir, "SKILL.md"), "utf8");
   // strip frontmatter → body
   const body = md.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
   const name = (md.match(/^name:\s*(.+)$/m) || [])[1]?.trim() || "skill";
   const evalsPath = join(dir, "evals", "evals.json");
   let evals: EvalCase[] = [];
+  let provenance: EvalProvenance | null = null;
   if (existsSync(evalsPath)) {
     try {
       const j = JSON.parse(readFileSync(evalsPath, "utf8"));
+      provenance = j.eval_provenance ?? null;
       // Canonical skill-creator schema uses `evals`; tolerate the older `test_cases`.
       const cases = Array.isArray(j.evals) ? j.evals : Array.isArray(j.test_cases) ? j.test_cases : [];
       evals = cases.map((c: any, i: number) => ({
         name: c.name ?? c.eval_name ?? `case-${i + 1}`,
         prompt: String(c.prompt ?? ""),
         // tolerate the spec field `expectations` or the colloquial `assertions`
-        expectations: Array.isArray(c.expectations) ? c.expectations : Array.isArray(c.expectations) ? c.expectations : [],
+        expectations: Array.isArray(c.expectations) ? c.expectations : Array.isArray(c.assertions) ? c.assertions : [],
         checks: Array.isArray(c.checks) ? c.checks : [],
       }));
     } catch { /* ignore */ }
   }
-  return { body, evals, name };
+  return { body, evals, name, provenance };
 }
 
 // Prompt assembly. The "with-skill" arm prepends the skill body as guidance.
@@ -136,8 +150,14 @@ function withSkillPrompt(body: string, taskPrompt: string): string {
     `grounded in the skill where it applies.`
   );
 }
+// The baseline must be a FAIR control: same framing as the with-skill arm, only the skill
+// block removed. Otherwise the "uplift" partly measures the extra framing, not the skill.
 function baselinePrompt(taskPrompt: string): string {
-  return `Task: ${taskPrompt}\n\nRespond with the plan you would follow and the concrete steps/commands.`;
+  return (
+    `You are a capable assistant. Apply your own best judgment.\n\n` +
+    `Task: ${taskPrompt}\n\n` +
+    `Respond with the plan you would follow and the concrete steps/commands.`
+  );
 }
 
 // LLM judge: grade each assertion against a response. Returns booleans.
@@ -176,9 +196,15 @@ async function main() {
   configureRunner({ runner: flags.runner, ccsProfile: flags.ccsProfile });
   setLlmPhase("skilleval"); // attribute all LLM spend in this process to the skilleval bucket
   const model = getModel({ model: flags.model });
-  const { body, evals, name } = loadSkill(dir);
+  const { body, evals, name, provenance } = loadSkill(dir);
 
+  const provLabel = provenance?.source === "held-out"
+    ? `held-out (${provenance.n_held_out ?? "?"} unseen task(s)) — generalisation test`
+    : provenance?.source === "in-distribution"
+      ? `in-distribution (NOT a generalisation test — cluster too thin for a held-out split)`
+      : "unknown (legacy skill without eval provenance)";
   console.log(`[skilleval] skill: ${name} · ${evals.length} eval case(s) · runner: ${describeRunner()}`);
+  console.log(`[skilleval] eval set: ${provLabel}`);
   if (evals.length === 0) {
     console.log("[skilleval] no eval cases — nothing to back-test.");
     return;

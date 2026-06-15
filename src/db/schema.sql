@@ -170,6 +170,37 @@ CREATE TABLE IF NOT EXISTS llm_calls (
 CREATE INDEX IF NOT EXISTS idx_llm_calls_phase ON llm_calls(phase);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_at ON llm_calls(at);
 
+-- ── Shadow closed-loop (causal before/after on FUTURE real tasks) ─────────────
+-- The offline back-test (Gate 2-B) can only ever measure "does the guidance shift a
+-- response on tasks we picked". The real question — does deploying the skill IMPROVE the
+-- work that actually happens afterwards — is answered by re-mining future logs. These two
+-- tables record that loop in "shadow" mode (observational, no live agent intervention):
+-- a deployment marks WHEN a skill went live + the PRE-deploy baseline for its task family;
+-- each observation snapshots the POST-deploy outcomes of the SAME task family and the delta.
+-- Matching key is task_type (the judge's label); started_at splits before vs after.
+CREATE TABLE IF NOT EXISTS skill_deployments (
+  skill              TEXT PRIMARY KEY,
+  cluster_id         TEXT,
+  task_type          TEXT,              -- the task family this skill targets (join key)
+  deployed_at        TEXT,              -- ISO; episodes started before/after split on this
+  pre_n              INTEGER,           -- judged episodes of this task_type BEFORE deploy
+  pre_success_rate   REAL,
+  pre_median_friction REAL,
+  note               TEXT
+);
+
+CREATE TABLE IF NOT EXISTS skill_shadow_obs (
+  obs_id                 TEXT PRIMARY KEY,  -- `${skill}@${observed_at}`
+  skill                  TEXT,
+  observed_at            TEXT,
+  post_n                 INTEGER,           -- judged episodes of this task_type AFTER deploy
+  post_success_rate      REAL,
+  post_median_friction   REAL,
+  delta_success_rate     REAL,              -- post - pre (the causal-ish signal)
+  delta_median_friction  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_shadow_obs_skill ON skill_shadow_obs(skill);
+
 -- Generated skill drafts (skill-gen phase). One row per cluster. Cache-keyed on
 -- evidence_hash + prompt_hash + model so re-runs skip unchanged clusters (mirrors the
 -- judge cache discipline — don't re-spend LLM calls on identical evidence).

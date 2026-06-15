@@ -60,8 +60,11 @@ flowchart LR
 ```
 
 **Everything is redacted at the boundary** (`src/core/redact.ts`) before any text reaches an LLM
-or is written to disk. The judge is **cache-keyed** (content + prompt + schema + model + cli) so a
-full run is resumable and never re-pays for unchanged episodes.
+or is written to disk — including the judge input itself (`renderEpisodeRedacted`), with the
+scrubbed-item count logged each run (no silent redaction). The judge is **cache-keyed** (content +
+prompt + schema + model + cli) so a full run is resumable and never re-pays for unchanged episodes;
+the **debate** judge keys on a content hash of its lenses + templates + round budget (not a bare
+literal), so editing any lens re-judges instead of serving a stale label.
 
 ---
 
@@ -83,13 +86,24 @@ flowchart TD
 ```
 
 - **Go/Kill 1** — `calibrate`: a stratified human spot-check measures judge↔human agreement (counters
-  "Claude grading Claude"). *Current run: 82% agreement on 11 reviewed episodes.*
+  "Claude grading Claude"). The sample is **deterministic** (reproducible/auditable; `--seed` to rotate),
+  and every agreement figure is reported with a **Wilson 95% CI** — so a small-N number reads honestly
+  (e.g. *82% on 11 → 95% CI 52–95%*, i.e. "directional, not a verdict") instead of as false precision.
 - **Gate 2-A** — `skillgen`: static checks — valid SKILL.md frontmatter, every step grounded in
   evidence, no hardcoded/secret literals, non-triviality, safety.
 - **Gate 2-B** — `skilleval`: runs the skill's `evals.json` *with-skill vs no-skill* in **two arms** —
   a `$0` deterministic **golden** check (no LLM) and an LLM-graded **semantic** check — and measures the
-  uplift of each. Results are written as **telemetry** (`skill_telemetry` table + `out/telemetry/*.jsonl`).
-  The strongest signal is still the **closed loop** — deploy, then re-mine future logs.
+  uplift of each. The eval cases are **held-out**: each cluster is split train/held-out, the skill is
+  drafted **only from train**, and the eval prompts are the **real tasks of the held-out episodes the
+  skill never saw** — so a pass is evidence of *transfer*, not teaching-to-the-test. Provenance
+  (`held-out` vs thin-corpus `in-distribution` fallback) is stamped in `meta.json` and printed by the
+  harness. Results are written as **telemetry** (`skill_telemetry` table + `out/telemetry/*.jsonl`).
+  See [`docs/HELDOUT_AND_SHADOW.md`](docs/HELDOUT_AND_SHADOW.md).
+- **Gate 3** — `skillshadow`: the **closed loop**, in observational *shadow* mode. `--deploy` snapshots
+  the pre-deploy baseline for the skill's task family; after future logs are re-mined, `--report`
+  compares the **post-deploy outcomes of real, unchosen tasks** to that baseline (success rate + median
+  friction). Immune to teaching-to-the-test; a quasi-experiment (before/after, not an RCT) and reported
+  honestly as such. The strongest signal in the system because the data is future and unchosen.
 - **Quality-gate hook** — `skillcheck` validates every generated SKILL.md (frontmatter, when-to-use
   framing, gate verdict, no PII, no creation-history leak); wired as a Claude Code hook
   (`.claude/settings.json`) so a bad skill written in-session is **blocked**.
@@ -129,7 +143,9 @@ bun run pipeline --no-judge              # 1. logs → episodes      (free, no L
 bun run pipeline --mine --yes --max-cost 6   # 2. judge + cluster  (LLM; --max-cost optional cap)
 bun run skillgen --yes                   # 3. clusters → skills    → out/skills/
 bun run skillcheck                       # 4. validate structure   (free)
-bun run skilleval --skill <name>         # 5. back-test the skill  (LLM)
+bun run skilleval --skill <name>         # 5. back-test on held-out tasks (LLM)
+bun run skillshadow --skill <name> --deploy   # 5b. mark live + snapshot pre-deploy baseline
+bun run skillshadow --skill <name> --report   #     (after re-mining future logs) before/after delta
 bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   # 6. dashboard
 #                                        → http://localhost:3000  (admin@cowork.local / Cowork-admin-1)
 ```
@@ -267,7 +283,8 @@ bun run build:win                                            # single .exe for M
 | Cowork ingest (`audit.jsonl`) verified on Windows + Code JSONL | Deploy skills to Cowork + multi-machine convergence (`merge`) |
 | Mining pipeline (VI-aware), judge + cache + **debate ensemble** | Business-data corpus + multi-person clusters |
 | Skill-gen + Gate 2-A + **chaining / det→code / sub-agents** | Live `--runner api` (needs an API key here) |
-| Gate 2-B **golden (no-LLM) + LLM arm + telemetry**; **quality-gate hook** | Legal / retention / access governance |
+| Gate 2-B **held-out** back-test (golden + LLM + telemetry); **quality-gate hook** | Legal / retention / access governance |
+| Gate 3 **shadow closed-loop** (`skillshadow`, pre/post on future tasks) | Live in-agent activation (vs. prepend proxy) |
 | Model tiering, Metabase dashboard, redaction-first, calibration | `.exe` fleet build (script ready) |
 
 ---
@@ -278,9 +295,11 @@ bun run build:win                                            # single .exe for M
 **tự soạn Agent Skill đúng chuẩn** → kiểm định qua các **cổng tin cậy** → hiển thị trên **dashboard
 Metabase** cho lãnh đạo.
 
-- **2 cổng tin cậy:** Go/Kill 1 (`calibrate` — đối chiếu judge vs người, hiện 82%) · Gate 2-A (kiểm
-  tĩnh skill) · Gate 2-B (`skilleval` — back-test có/không skill, **2 nhánh: golden không-LLM + LLM**,
-  ghi telemetry) · **hook `skillcheck`** chốt chất lượng skill.
+- **Các cổng tin cậy:** Go/Kill 1 (`calibrate` — đối chiếu judge vs người, hiện 82%) · Gate 2-A (kiểm
+  tĩnh skill) · Gate 2-B (`skilleval` — back-test có/không skill trên **held-out** (task skill chưa
+  thấy → chống học-tủ), **2 nhánh: golden không-LLM + LLM**, ghi telemetry) · **Gate 3** (`skillshadow`
+  — vòng kín ngầm: so outcome task tương lai trước/sau khi deploy) · **hook `skillcheck`** chốt chất
+  lượng skill.
 - **Judge:** mặc định 1 LLM, hoặc **ensemble phản biện đa góc nhìn** (`--judge-debate`); LLM **phân tầng
   model** (discovery rẻ, judge ngon). Skill có **`related_skills` (chain)**, đẩy bước máy-làm-được sang
   `scripts/`, output cố định sang `assets/`; gợi ý chạy độc lập + tầng model ghi ở `meta.json`.

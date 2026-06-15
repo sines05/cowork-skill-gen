@@ -10,6 +10,27 @@ import type {
   EpisodeFeatures,
 } from "../core/types.ts";
 import { sha256, truncate } from "../core/util.ts";
+import { INTERRUPT_MARKER } from "./classify.cues.ts";
+
+// Choose the episode's representative opening prompt. NOT simply epTurns[0]: the first
+// episode absorbs any leading turns before the first new_task, so epTurns[0] can be an
+// interruption marker ("[Request interrupted by user]"), a pasted log, or an empty
+// image-only turn — which then leaks into report exemplars AND held-out eval prompts.
+// Prefer the new_task turn that actually opened the episode; fall back to the first turn
+// with real text; never return the interrupt marker.
+function pickFirstPrompt(epTurns: ClassifiedTurn[], startTurnIdx: number): string {
+  const meaningful = (t: ClassifiedTurn | undefined): boolean =>
+    !!t &&
+    t.role !== "interruption" &&
+    !!t.text &&
+    t.text.trim().length > 0 &&
+    !t.text.trim().startsWith(INTERRUPT_MARKER);
+  const opener = epTurns.find((t) => t.idx === startTurnIdx && t.role === "new_task");
+  if (meaningful(opener)) return truncate(opener!.text, 200);
+  const firstReal = epTurns.find(meaningful);
+  if (firstReal) return truncate(firstReal.text, 200);
+  return "";
+}
 
 function zeroFeatures(): EpisodeFeatures {
   return {
@@ -100,7 +121,7 @@ function buildEpisode(
     nImages += t.nImages;
   }
 
-  const firstPrompt = epTurns.length ? truncate(epTurns[0].text, 200) : "";
+  const firstPrompt = epTurns.length ? pickFirstPrompt(epTurns, startTurnIdx) : "";
   const { startedAt, endedAt } = sliceTimespan(epEvents);
 
   return {

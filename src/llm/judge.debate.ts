@@ -15,6 +15,7 @@
 
 import { runClaudeP, runApi, getModel, parseAndValidate } from "./judge.ts";
 import { modelTier } from "./runner.ts";
+import { sha256 } from "../core/util.ts";
 import type {
   JudgeLabel,
   JudgeMeta,
@@ -207,6 +208,27 @@ async function consolidate(
   return parseAndValidate(out, episodeId); // same validation as the single-judge path
 }
 
+// ── Debate cache key ──────────────────────────────────────────────────────────
+// The single-judge path keys its cache on sha256(judge.md). The debate path has no
+// single prompt file — its "prompt" is the SET of lens texts + the critique/refute/
+// consolidate templates + the round budget. Hashing a bare literal ("debate") meant
+// editing any lens or template silently REUSED stale labels. We instead hash the actual
+// material: the perspective lenses AND the source of every prompt-building function, so
+// ANY wording change invalidates the cache (conservative — over-invalidates, never under).
+// maxRounds is folded in via the same Math.max default the judge applies, so the pipeline
+// (which builds the key before judging) and the judge agree on the hash.
+export function debateCacheHash(maxRoundsOpt?: number): string {
+  const maxRounds = Math.max(1, maxRoundsOpt ?? 2);
+  const material = JSON.stringify({
+    perspectives: PERSPECTIVES,
+    maxRounds,
+    schema: LABEL_SCHEMA_VERSION,
+    // Function sources capture the exact prompt wording without a manual version bump.
+    fns: [runPerspective, runCritique, runRefute, consolidate].map((f) => f.toString()),
+  });
+  return "debate:" + sha256(material).slice(0, 24);
+}
+
 // Stable signature of a round's material (non-weak) critiques — used to detect convergence.
 function critiqueSignature(critiques: DebateRound["critiques"]): string {
   return critiques
@@ -272,7 +294,9 @@ export async function judgeEpisodeDebate(
 
   const meta: JudgeMeta = {
     model: consModel,
-    judge_prompt_hash: "debate", // distinct from the single-judge prompt hash
+    // Content-addressed (not a bare "debate" literal) so editing any lens/template
+    // invalidates the cache. Must match the pipeline's pre-judge key for the same maxRounds.
+    judge_prompt_hash: debateCacheHash(opts?.maxRounds),
     label_schema_version: LABEL_SCHEMA_VERSION,
     cli_version: "", // stamped by the caller if needed
     judged_at: new Date().toISOString(),

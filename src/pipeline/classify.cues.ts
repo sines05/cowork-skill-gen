@@ -7,15 +7,17 @@ export const INTERRUPT_MARKER = "[Request interrupted by user]";
 // Multilingual: English + Vietnamese. These are PURE acknowledgement/praise with
 // no follow-up instruction; kept SHORT-only (≤40 chars, see isApproval) so longer
 // turns that merely contain "ok"/"được" but also carry a real request don't match.
+// NOTE: "continue"/"go"/"go ahead"/"proceed"/"next" are deliberately NOT here. They are
+// PROCEED cues ("keep going"), not satisfaction — a user can say "continue" and then
+// abandon. Treating them as approval inflated the +strong explicit_user_approval success
+// signal (a dropped task scored "success"). They live in CONTINUATION_PREFIXES instead,
+// matching the existing Vietnamese handling ("tiếp tục").
 export const APPROVAL_PHRASES = [
   "ok",
   "okay",
   "yes",
   "yep",
   "yeah",
-  "go",
-  "go ahead",
-  "continue",
   "lgtm",
   "perfect",
   "great",
@@ -23,7 +25,6 @@ export const APPROVAL_PHRASES = [
   "thank you",
   "do it",
   "sounds good",
-  "proceed",
   "👍",
   // Vietnamese pure acks / praise (no instruction):
   "được",
@@ -133,6 +134,11 @@ export const CONTINUATION_PREFIXES = [
   "và", // "and ..."
 ];
 
+// English proceed/keep-going cues. These tell the assistant to CONTINUE the current task,
+// not that the user is satisfied — symmetric with the Vietnamese "tiếp tục" handling and
+// the reason they were removed from APPROVAL_PHRASES.
+const EN_PROCEED_RE = /^(continue|go on|go ahead|keep going|carry on|next|proceed|go)\b/;
+
 export function isContinuationCue(text: string): boolean {
   const t = text.toLowerCase().trim();
   if (/^also\b/.test(t)) return true;
@@ -140,6 +146,7 @@ export function isContinuationCue(text: string): boolean {
   if (/^then\b/.test(t)) return true;
   if (/^plus\b/.test(t)) return true;
   if (/^and\s+/.test(t)) return true;
+  if (EN_PROCEED_RE.test(t)) return true;
   // Vietnamese additive / proceed cues at turn start.
   for (const p of CONTINUATION_PREFIXES) {
     if (t.startsWith(p)) return true;

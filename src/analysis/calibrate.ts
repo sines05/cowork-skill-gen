@@ -14,6 +14,8 @@ import { Database } from "bun:sqlite";
 import { openDb } from "../db/db.ts";
 import { upsertCalibration } from "../db/db.ts";
 import { judgeEpisode } from "../llm/judge.ts";
+import { sha256, fmtRateCI } from "../core/util.ts";
+import { defaultDbPath } from "../core/paths.ts";
 import type { CalibrationRow, Outcome } from "../core/types.ts";
 
 const OUTCOMES: readonly Outcome[] = [
@@ -100,7 +102,17 @@ function rowToSampled(row: any, stratum: string): SampledEpisode {
 
 // Draw the stratified sample. Round-robin across strata until we hit sampleSize,
 // never double-counting an episode (first stratum that claims it wins its tag).
-function drawStratifiedSample(db: Database, sampleSize: number): SampledEpisode[] {
+//
+// DETERMINISTIC ordering (was `ORDER BY RANDOM()`): the calibration set is a TRUST
+// ARTIFACT — the same episodes must be drawn every run so the agreement number is
+// reproducible and auditable, and so a reviewer can re-open the exact same cases. We
+// order within each stratum by sha256(seed + episode_id): stable, but uncorrelated with
+// id/time so it isn't a biased "first N". Pass --seed to rotate to a different fixed set.
+function drawStratifiedSample(
+  db: Database,
+  sampleSize: number,
+  seed = ""
+): SampledEpisode[] {
   const perStratum: Map<string, any[]> = new Map();
   for (const s of STRATA) {
     const rows = db
@@ -111,10 +123,12 @@ function drawStratifiedSample(db: Database, sampleSize: number): SampledEpisode[
          FROM episode_labels l
          JOIN episodes e ON e.episode_id = l.episode_id
          LEFT JOIN episode_features f ON f.episode_id = l.episode_id
-         WHERE ${s.where}
-         ORDER BY RANDOM()`
+         WHERE ${s.where}`
       )
       .all() as any[];
+    rows.sort((a, b) =>
+      sha256(seed + a.episode_id).localeCompare(sha256(seed + b.episode_id))
+    );
     perStratum.set(s.name, rows);
   }
 
@@ -372,27 +386,28 @@ function reportPerStratumAgreement(db: Database): void {
     )
     .all() as any[];
 
-  console.log("\n--- Per-stratum agreement ---");
+  console.log("\n--- Per-stratum agreement (Wilson 95% CI) ---");
   if (rows.length === 0) {
     console.log("(no calibration rows)");
     return;
   }
-  let totN = 0;
   let totAgree = 0;
   let totScored = 0;
   for (const r of rows) {
     const scored = r.n - r.pending;
-    const pct = scored > 0 ? ((r.agree / scored) * 100).toFixed(0) + "%" : "—";
     console.log(
-      `  ${r.stratum.padEnd(20)} n=${r.n}  scored=${scored}  agree=${pct}` +
+      `  ${r.stratum.padEnd(20)} ${fmtRateCI(r.agree, scored)}` +
         (r.pending ? `  (pending=${r.pending})` : "")
     );
-    totN += r.n;
     totScored += scored;
     totAgree += r.agree;
   }
-  const overall = totScored > 0 ? ((totAgree / totScored) * 100).toFixed(0) + "%" : "—";
-  console.log(`  ${"OVERALL".padEnd(20)} n=${totN}  scored=${totScored}  agree=${overall}`);
+  console.log(`  ${"OVERALL".padEnd(20)} ${fmtRateCI(totAgree, totScored)}`);
+  if (totScored > 0 && totScored < 30) {
+    console.log(
+      `  ⚠ N=${totScored} is small — the CI is wide; treat the point estimate as directional, not a verdict.`
+    );
+  }
 }
 
 // Label-based agreement: compare the recorded human_outcome against the judge's
@@ -422,8 +437,7 @@ function reportLabelAgreement(db: Database): void {
       confusion.set(k, (confusion.get(k) ?? 0) + 1);
     }
   }
-  const pct = ((match / rows.length) * 100).toFixed(0);
-  console.log(`  ${match}/${rows.length} exact-outcome match (${pct}%)`);
+  console.log(`  exact-outcome match: ${fmtRateCI(match, rows.length)}`);
   if (confusion.size) {
     console.log("  disagreements (judge → human):");
     for (const [k, n] of [...confusion.entries()].sort((a, b) => b[1] - a[1])) {
@@ -436,13 +450,26 @@ function reportLabelAgreement(db: Database): void {
 
 export async function runCalibration(
   db: Database,
-  opts?: { sampleSize?: number; selfConsistency?: number; nonInteractive?: boolean }
+  opts?: {
+    sampleSize?: number;
+    selfConsistency?: number;
+    nonInteractive?: boolean;
+    seed?: string;
+    dbLabel?: string;
+  }
 ): Promise<void> {
   const sampleSize = opts?.sampleSize ?? DEFAULT_SAMPLE;
-  const k = opts?.selfConsistency ?? DEFAULT_SELF_CONSISTENCY;
   const nonInteractive = opts?.nonInteractive ?? false;
+  // Self-consistency makes LLM calls. In NON-interactive (smoke/CI) mode it must NOT run
+  // by default — that's what made the trust gate "break on another machine" (it required a
+  // working claude/ccs just to draw a sample). Opt in explicitly with --self-consistency K.
+  const k = opts?.selfConsistency ?? (nonInteractive ? 0 : DEFAULT_SELF_CONSISTENCY);
 
-  const sample = drawStratifiedSample(db, sampleSize);
+  console.log(
+    `Calibrating corpus: ${opts?.dbLabel ?? defaultDbPath}` +
+      (opts?.seed ? ` · seed="${opts.seed}"` : " · fixed (deterministic) sample")
+  );
+  const sample = drawStratifiedSample(db, sampleSize, opts?.seed ?? "");
   console.log(`Stratified sample: ${sample.length} episodes (requested ${sampleSize}).`);
   for (const ep of sample) {
     console.log(
@@ -508,13 +535,21 @@ export async function runCalibration(
 // ── CLI ─────────────────────────────────────────────────────────────────────
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  const opts: { sampleSize?: number; selfConsistency?: number; nonInteractive?: boolean } = {};
+  const opts: {
+    sampleSize?: number;
+    selfConsistency?: number;
+    nonInteractive?: boolean;
+    seed?: string;
+    dbPath?: string;
+  } = {};
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--non-interactive") opts.nonInteractive = true;
     else if (a === "--sample") opts.sampleSize = Number(args[++i]);
     else if (a === "--self-consistency") opts.selfConsistency = Number(args[++i]);
+    else if (a === "--seed") opts.seed = args[++i];
+    else if (a === "--db") opts.dbPath = args[++i];
   }
-  const db = openDb();
-  await runCalibration(db, opts);
+  const db = openDb(opts.dbPath);
+  await runCalibration(db, { ...opts, dbLabel: opts.dbPath });
 }

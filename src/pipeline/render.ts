@@ -11,6 +11,7 @@
 import type { Episode, RawEvent } from "../core/types.ts";
 import { extractUserText, countImages } from "../core/util.ts";
 import { RENDER_CHAR_CAP } from "../core/types.ts";
+import { redactText } from "../core/redact.ts";
 
 const USER_TEXT_CAP = 700;
 const ASSISTANT_TEXT_CAP = 1000;
@@ -145,16 +146,35 @@ function fitWithinCap(conversationBody: string, appended: string): string {
   return result.length <= RENDER_CHAR_CAP ? result : result.slice(0, RENDER_CHAR_CAP);
 }
 
-export function renderEpisode(episode: Episode): string {
+// Render + REDACT one episode into the exact string the judge sees.
+//
+// This is the LLM/disk boundary (README: "everything is redacted at the boundary
+// before any text reaches an LLM"). Redaction happens BEFORE the cap so the cap math
+// runs on the scrubbed text, and BOTH halves are scrubbed — the conversation body AND
+// the appended signals/subagent blocks (signal reasons + first prompts can carry PII).
+// Returns the redaction count so callers can LOG how much was hidden (no silent redaction).
+export function renderEpisodeRedacted(episode: Episode): {
+  text: string;
+  nRedacted: number;
+} {
   const events: RawEvent[] = Array.isArray(episode.events) ? episode.events : [];
 
-  const conversationBody = buildConversation(events).join("\n");
+  const conv = redactText(buildConversation(events).join("\n"));
 
   const signalsBlock = buildSignalsBlock(episode);
   const subagentsBlock = buildSubagentsBlock(episode);
-  const appended = subagentsBlock
+  const appendedRaw = subagentsBlock
     ? signalsBlock + "\n\n" + subagentsBlock
     : signalsBlock;
+  const appended = redactText(appendedRaw);
 
-  return fitWithinCap(conversationBody, appended);
+  return {
+    text: fitWithinCap(conv.text, appended.text),
+    nRedacted: conv.nRedacted + appended.nRedacted,
+  };
+}
+
+// Convenience: the redacted rendered string (the canonical judge input).
+export function renderEpisode(episode: Episode): string {
+  return renderEpisodeRedacted(episode).text;
 }

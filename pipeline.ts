@@ -17,14 +17,14 @@ import { classifyTurns } from "./src/pipeline/classify.ts";
 import { segmentEpisodes } from "./src/pipeline/segment.ts";
 import { attachSubagents } from "./src/pipeline/subagents.ts";
 import { computeSignalsAndFeatures } from "./src/pipeline/signals.ts";
-import { renderEpisode } from "./src/pipeline/render.ts";
+import { renderEpisodeRedacted } from "./src/pipeline/render.ts";
 import {
   judgeEpisode,
   getJudgePromptHash,
   getModel,
   getCliVersion,
 } from "./src/llm/judge.ts";
-import { judgeEpisodeDebate } from "./src/llm/judge.debate.ts";
+import { judgeEpisodeDebate, debateCacheHash } from "./src/llm/judge.debate.ts";
 import { mine } from "./src/analysis/mine.ts";
 import { report } from "./src/analysis/report.ts";
 import { configureRunner, describeRunner, setLlmPhase, type RunnerName } from "./src/llm/runner.ts";
@@ -147,6 +147,9 @@ async function main() {
 
   // Cache-key constants (cheap, side-effect-free getters) — resolved once.
   const judgePromptHash = getJudgePromptHash();
+  // Debate path: content-addressed hash of the lenses + templates + round budget, so the
+  // pre-judge cache check here matches the hash the debate judge stamps (no stale "debate" literal).
+  const debateHash = debateCacheHash(flags.judgeRounds);
   const model = getModel();
   const cliVersion = flags.noJudge ? "" : await getCliVersion();
 
@@ -188,6 +191,7 @@ async function main() {
   let judgeErrors = 0;
   let sessionErrors = 0;
   let spentUsd = 0;
+  let redactedTotal = 0; // secrets/PII scrubbed at the judge boundary (no silent redaction)
   let consecErrors = 0;
   let stopJudging = false;
   let episodeBudget = flags.maxEpisodes ?? Infinity; // flags validated → never NaN
@@ -239,9 +243,9 @@ async function main() {
       const key: CacheKey = {
         episodeId: ep.episodeId,
         contentHash: ep.contentHash,
-        // Debate-judged episodes use a distinct cache namespace so they never collide
-        // with single-judge results (and re-running switches modes cleanly).
-        judgePromptHash: flags.judgeDebate ? "debate" : judgePromptHash,
+        // Debate-judged episodes use a distinct (content-addressed) cache namespace so they
+        // never collide with single-judge results and re-judge when any lens/template changes.
+        judgePromptHash: flags.judgeDebate ? debateHash : judgePromptHash,
         labelSchemaVersion: LABEL_SCHEMA_VERSION,
         model,
         cliVersion,
@@ -258,7 +262,8 @@ async function main() {
       episodeBudget--;
       spentUsd += COST_PER_JUDGE_USD;
       try {
-        const rendered = renderEpisode(ep);
+        const { text: rendered, nRedacted } = renderEpisodeRedacted(ep);
+        redactedTotal += nRedacted;
         const adapter = flags.runner === "api" ? "api" : "claude";
         let label, meta;
         if (flags.judgeDebate) {
@@ -300,7 +305,7 @@ async function main() {
   log(
     `done. sessions=${sessions.length} (errors=${sessionErrors}) episodes=${totalEpisodes} ` +
       `judged=${judged} cached/skipped=${skipped} judgeErrors=${judgeErrors} ` +
-      `est_spend=$${spentUsd.toFixed(2)}`
+      `est_spend=$${spentUsd.toFixed(2)} redacted=${redactedTotal} item(s) at judge boundary`
   );
   if (flags.mine && !flags.noJudge) {
     log("running mine + report…");

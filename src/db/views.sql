@@ -94,11 +94,15 @@ ORDER BY confidence DESC;
 -- episode tokens (the work analyzed); see v_workload_tokens for that.
 
 -- One headline row for the scalar cards.
+-- Cost SUMs exclude FAILED calls (ok=0) so an errored call can't inflate spend; legacy
+-- rows with ok IS NULL are treated as ok (older successful calls). `calls` still counts
+-- every attempt, with failed_calls broken out for transparency.
 DROP VIEW IF EXISTS v_llm_cost_total;
 CREATE VIEW v_llm_cost_total AS
 SELECT
   COUNT(*)                                              AS calls,
-  ROUND(COALESCE(SUM(cost_usd), 0), 4)                  AS cost_usd,
+  SUM(CASE WHEN COALESCE(ok,1)=0 THEN 1 ELSE 0 END)     AS failed_calls,
+  ROUND(COALESCE(SUM(CASE WHEN COALESCE(ok,1)=1 THEN cost_usd ELSE 0 END), 0), 4) AS cost_usd,
   COALESCE(SUM(input_tokens), 0)                        AS input_tokens,
   COALESCE(SUM(output_tokens), 0)                       AS output_tokens,
   COALESCE(SUM(input_tokens + output_tokens), 0)        AS total_tokens,
@@ -111,11 +115,11 @@ CREATE VIEW v_llm_cost_by_phase AS
 SELECT
   COALESCE(phase, 'other')                              AS phase,
   COUNT(*)                                              AS calls,
-  ROUND(COALESCE(SUM(cost_usd), 0), 4)                  AS cost_usd,
+  ROUND(COALESCE(SUM(CASE WHEN COALESCE(ok,1)=1 THEN cost_usd ELSE 0 END), 0), 4) AS cost_usd,
   COALESCE(SUM(input_tokens), 0)                        AS input_tokens,
   COALESCE(SUM(output_tokens), 0)                       AS output_tokens,
   COALESCE(SUM(input_tokens + output_tokens), 0)        AS total_tokens,
-  SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END)               AS failed_calls
+  SUM(CASE WHEN COALESCE(ok,1) = 0 THEN 1 ELSE 0 END)   AS failed_calls
 FROM llm_calls
 GROUP BY COALESCE(phase, 'other')
 ORDER BY cost_usd DESC;
@@ -126,7 +130,7 @@ CREATE VIEW v_llm_cost_by_model AS
 SELECT
   COALESCE(model, 'unknown')                            AS model,
   COUNT(*)                                              AS calls,
-  ROUND(COALESCE(SUM(cost_usd), 0), 4)                  AS cost_usd,
+  ROUND(COALESCE(SUM(CASE WHEN COALESCE(ok,1)=1 THEN cost_usd ELSE 0 END), 0), 4) AS cost_usd,
   COALESCE(SUM(input_tokens + output_tokens), 0)        AS total_tokens
 FROM llm_calls
 GROUP BY COALESCE(model, 'unknown')
@@ -138,7 +142,7 @@ CREATE VIEW v_llm_cost_by_day AS
 SELECT
   substr(at, 1, 10)                                     AS day,
   COUNT(*)                                              AS calls,
-  ROUND(COALESCE(SUM(cost_usd), 0), 4)                  AS cost_usd,
+  ROUND(COALESCE(SUM(CASE WHEN COALESCE(ok,1)=1 THEN cost_usd ELSE 0 END), 0), 4) AS cost_usd,
   COALESCE(SUM(input_tokens + output_tokens), 0)        AS total_tokens
 FROM llm_calls
 WHERE at IS NOT NULL

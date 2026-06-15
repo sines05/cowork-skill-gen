@@ -150,11 +150,17 @@ export function computeSignalsAndFeatures(episode: Episode): void {
   // ── explicit_user_approval (+ strong) ────────────────────────────────────
   // An approval-role turn near the episode end, or praise text anywhere.
   const PRAISE_RE = /\b(perfect|great|awesome|excellent|nice|lgtm|looks good|well done|thanks|thank you|amazing)\b/i;
+  // Genuine SATISFACTION wording. A near-end approval turn must actually express acceptance
+  // to count as +strong success evidence. Defense-in-depth: even if a "continue"/"tiếp tục"
+  // proceed turn slipped through as an approval role, it does NOT match this, so it cannot
+  // turn an abandoned task into a "success" (the reported failure mode).
+  const SATISFIED_RE =
+    /\b(ok|okay|yes|yep|yeah|lgtm|perfect|great|awesome|excellent|nice|looks good|well done|thanks|thank you|amazing|approved|được|đúng|duyệt|đồng ý|chuẩn|tuyệt|ngon|ổn|tốt|cảm ơn|cám ơn)\b/i;
   let approvalReason: string | null = null;
   if (turns.length > 0) {
     const tailStart = Math.max(0, turns.length - 2); // "near the end" = last 2 human turns
     for (let i = tailStart; i < turns.length; i++) {
-      if (turns[i].role === "approval") {
+      if (turns[i].role === "approval" && SATISFIED_RE.test(turns[i].text)) {
         approvalReason = `approval-role turn near episode end ("${turns[i].text.slice(0, 40)}")`;
         break;
       }
