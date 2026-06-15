@@ -15,6 +15,7 @@
     "report": "bun run src/analysis/report.ts",
     "skillgen": "bun run src/skills/skillgen.ts",
     "skilleval": "bun run src/skills/skilleval.ts",
+    "skillcheck": "bun run src/skills/skillcheck.ts",
     "dashboard": "bun run src/analysis/dashboard.ts",
     "merge": "bun run src/analysis/merge.ts",
     "audit": "bun run src/ingest/cowork-audit.ts",

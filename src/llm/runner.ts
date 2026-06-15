@@ -31,6 +31,21 @@ export function configureRunner(opts: { runner?: RunnerName; ccsProfile?: string
   if (opts.ccsProfile) _ccsProfile = opts.ccsProfile;
 }
 
+// Model tiering — pick the model by how much REASONING the step needs, not one-size-fits-all.
+// Leadership rec: discovery/triage on a cheap model; heavy reasoning / review / consolidation
+// on the best model; planned implementation on a mid model. Overridable per tier via env so
+// an operator can retune without code changes.
+export type ModelTier = "cheap" | "standard" | "best";
+const TIER_DEFAULTS: Record<ModelTier, string> = {
+  cheap: "claude-haiku-4-5-20251001", // discovery, clustering, batch classification
+  standard: "claude-sonnet-4-6", // planned implementation
+  best: "claude-opus-4-8", // judging, critique/consolidation, review
+};
+export function modelTier(tier: ModelTier): string {
+  const env = process.env[`MINER_MODEL_${tier.toUpperCase()}`];
+  return env && env.trim() ? env.trim() : TIER_DEFAULTS[tier];
+}
+
 // Resolve a CLI's real executable path before spawning. On Windows the `claude`/`ccs`
 // entry points are `.cmd` shims and Bun.spawn(["claude", …]) does NOT resolve a bare name
 // against PATHEXT — it fails with `ENOENT: uv_spawn 'claude'`. Bun.which() does the PATH +

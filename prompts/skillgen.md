@@ -87,10 +87,15 @@ on Linux/Ubuntu — do not assume Windows/macOS-only tooling unless the evidence
 
 ## Evals (handoff to the test gate)
 
-Provide 2–3 realistic `evals` test cases drawn from the exemplars: a natural-language
-`prompt` a user would give, plus `assertions` that are **objectively verifiable**
-(file produced, command exits 0, specific transformation happened). Skip assertions that
-need human judgement. These feed a with-skill vs no-skill back-test downstream.
+Provide 2–3 realistic `evals` test cases drawn from the exemplars. Each has:
+- a natural-language `prompt` a user would give;
+- `assertions` — semantic, graded by an LLM (the *with-LLM* arm): what a good response must do;
+- `checks` — **deterministic, code-checkable** signals (the *golden / no-LLM* arm), each one of:
+  `{"kind":"contains","value":"<substring>"}`, `{"kind":"regex","value":"<re>"}`,
+  `{"kind":"url_present"}` (cites a source), `{"kind":"code_block"}` (gives a runnable block),
+  `{"kind":"min_length","value":"200"}`. Pick checks that objectively distinguish a
+  skill-following response from a vague one. `checks: []` only if nothing is objectively checkable.
+These feed a with-skill vs no-skill back-test downstream (both arms).
 
 ## Output schema (emit EXACTLY this object, all fields required unless marked optional)
 
@@ -104,7 +109,7 @@ need human judgement. These feed a with-skill vs no-skill back-test downstream.
   "references": [ { "filename": "REFERENCE.md", "markdown": "<per-capability detail; [] if single-capability>" } ],
   "scripts": [ { "filename": "run.sh", "language": "bash"|"python"|"javascript", "code": "<self-contained, error-handling>" } ],
   "related_skills": [ { "name": "<kebab-case skill>", "relation": "depends_on"|"followed_by"|"see_also", "why": "<short>" } ],
-  "evals": [ { "name": "<short>", "prompt": "<user request>", "assertions": ["<objectively verifiable>"] } ],
+  "evals": [ { "name": "<short>", "prompt": "<user request>", "assertions": ["<semantic, LLM-graded>"], "checks": [ { "kind": "contains"|"regex"|"url_present"|"code_block"|"min_length", "value": "<for contains/regex/min_length>" } ] } ],
   "citations": ["<sessionId#idx | friction: ... | pattern: ...>"],
   "guardrails": ["<safety/quality guardrails derived from risk_flags & friction>"],
   "anti_patterns": ["<the failing approaches to avoid, from fail patterns>"],

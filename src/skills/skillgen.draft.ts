@@ -10,7 +10,16 @@ import type { RankedCandidate } from "../core/types.ts";
 // ── Draft validation + coercion ──────────────────────────────────────────────
 export interface ScriptEntry { filename: string; language: string; code: string; }
 export interface RefEntry { filename: string; markdown: string; }
-export interface EvalCase { name: string; prompt: string; assertions: string[]; }
+// Deterministic, code-checkable assertions — the "golden" (no-LLM) test arm. Objective
+// signals only (a URL is present, a fenced command block exists, a keyword appears).
+export type DetCheckKind = "contains" | "regex" | "url_present" | "code_block" | "min_length";
+export interface DetCheck { kind: DetCheckKind; value?: string; }
+export interface EvalCase {
+  name: string;
+  prompt: string;
+  assertions: string[]; // semantic — graded by the LLM arm
+  checks: DetCheck[]; // deterministic — graded in code, $0
+}
 // Skill chaining: a skill should not live alone — it should know which OTHER skills it
 // needs before it (depends_on), what to reach for next (followed_by), or what's adjacent
 // (see_also), so it can route work it can't do itself even when the system prompt is gone.
@@ -109,6 +118,7 @@ export function validateDraft(obj: any, cand: RankedCandidate): Draft {
         }))
     : [];
 
+  const CHECK_KINDS = ["contains", "regex", "url_present", "code_block", "min_length"];
   const evals: EvalCase[] = Array.isArray(obj.evals)
     ? obj.evals
         .filter((e: any) => e && typeof e.prompt === "string")
@@ -116,6 +126,12 @@ export function validateDraft(obj: any, cand: RankedCandidate): Draft {
           name: typeof e.name === "string" && e.name.trim() ? e.name.trim() : `case-${i + 1}`,
           prompt: String(e.prompt),
           assertions: asStrArr(e.assertions),
+          checks: Array.isArray(e.checks)
+            ? e.checks
+                .filter((c: any) => c && CHECK_KINDS.includes(c.kind))
+                .map((c: any) => ({ kind: c.kind, value: c.value != null ? String(c.value) : undefined }))
+                .slice(0, 8)
+            : [],
         }))
     : [];
 

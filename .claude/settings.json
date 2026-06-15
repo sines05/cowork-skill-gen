@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run src/skills/skillhook.ts",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

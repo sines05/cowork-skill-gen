@@ -75,6 +75,33 @@ export function buildSkillMd(draft: Draft, ev: Evidence, gate: GateResult, gener
   return fm.join("\n") + "\n\n" + body + "\n" + extra.join("\n") + "\n";
 }
 
+// A skill is "isolated" when it has no `depends_on` prerequisite — it can run standalone.
+// Leadership rec: isolated skills should get their own sub-agent so they execute in a
+// dedicated context. Chained skills (depends_on something) need orchestration, not isolation.
+export function isIsolated(draft: Draft): boolean {
+  return !draft.related_skills.some((r) => r.relation === "depends_on");
+}
+
+// A Claude Code sub-agent definition that runs THIS skill standalone. Model tier =
+// "sonnet" (implementation with a clear plan is enough — per the tiering guidance; the
+// expensive judging/review tiers are for the mining pipeline, not skill execution).
+export function buildAgentMd(draft: Draft): string {
+  const fm = [
+    "---",
+    `name: ${draft.name}`,
+    `description: ${yamlScalar(draft.description)}`,
+    `model: sonnet`,
+    "---",
+  ];
+  const body =
+    `You are a focused sub-agent that performs exactly one capability: **${draft.name}**.\n\n` +
+    `Apply the skill below. Stay in scope; if the task needs a capability this skill does ` +
+    `not cover, say so and hand back rather than improvising.\n\n` +
+    `---\n\n` +
+    redactText(draft.skill_body_markdown).text;
+  return fm.join("\n") + "\n\n" + body + "\n";
+}
+
 // ── Write the skill folder ───────────────────────────────────────────────────
 export function writeSkillFolder(
   baseDir: string,
@@ -102,6 +129,11 @@ export function writeSkillFolder(
       writeFileSync(join(dir, "references", r.filename), redactText(r.markdown).text, "utf8");
     }
   }
+  // Isolated skill → bundle a sub-agent definition so it can run in its own context.
+  if (isIsolated(draft)) {
+    writeFileSync(join(dir, "agent.md"), buildAgentMd(draft), "utf8");
+  }
+
   // evals/evals.json — handoff to the Gate 2-B back-test.
   mkdirSync(join(dir, "evals"), { recursive: true });
   writeFileSync(

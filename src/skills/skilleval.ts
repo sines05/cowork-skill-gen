@@ -25,12 +25,14 @@
 //                    the assertions; makes NO LLM calls.
 //   --execute:       runs with-skill vs no-skill + LLM assertion grading (costs money).
 
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
 import { join, isAbsolute } from "path";
 import { runClaudeP, getModel } from "../llm/judge.ts";
 import { configureRunner, describeRunner, type RunnerName } from "../llm/runner.ts";
 import { redactText } from "../core/redact.ts";
 import { outDir } from "../core/paths.ts";
+import { openDb, upsertSkillTelemetry } from "../db/db.ts";
+import type { DetCheck } from "./skillgen.draft.ts";
 
 const SKILLS_DIR = join(outDir, "skills");
 
@@ -65,7 +67,34 @@ function parseFlags(argv: string[]): Flags {
   return f;
 }
 
-interface EvalCase { name: string; prompt: string; assertions: string[]; }
+interface EvalCase { name: string; prompt: string; assertions: string[]; checks: DetCheck[]; }
+
+// ── Deterministic grader (the GOLDEN / no-LLM arm) ────────────────────────────
+// Objective, $0 checks. This is the half of the back-test that does NOT depend on an LLM,
+// so it stays valid even if the grader model drifts — and it's the part you can trust
+// without a second model in the loop.
+function gradeChecks(response: string, checks: DetCheck[]): boolean[] {
+  return checks.map((c) => {
+    try {
+      switch (c.kind) {
+        case "contains":
+          return !!c.value && response.toLowerCase().includes(c.value.toLowerCase());
+        case "regex":
+          return !!c.value && new RegExp(c.value, "i").test(response);
+        case "url_present":
+          return /https?:\/\/\S+/i.test(response);
+        case "code_block":
+          return /```[\s\S]*?```|(^|\n)\s{4}\S/.test(response);
+        case "min_length":
+          return response.trim().length >= Number(c.value ?? 0);
+        default:
+          return false;
+      }
+    } catch {
+      return false; // a bad regex value never throws the whole back-test
+    }
+  });
+}
 
 function resolveSkillDir(skill: string): string {
   // accept a name (under out/skills) or an explicit path
@@ -83,7 +112,13 @@ function loadSkill(dir: string): { body: string; evals: EvalCase[]; name: string
   if (existsSync(evalsPath)) {
     try {
       const j = JSON.parse(readFileSync(evalsPath, "utf8"));
-      if (Array.isArray(j.test_cases)) evals = j.test_cases;
+      if (Array.isArray(j.test_cases))
+        evals = j.test_cases.map((c: any) => ({
+          name: c.name ?? "case",
+          prompt: String(c.prompt ?? ""),
+          assertions: Array.isArray(c.assertions) ? c.assertions : [],
+          checks: Array.isArray(c.checks) ? c.checks : [],
+        }));
     } catch { /* ignore */ }
   }
   return { body, evals, name };
@@ -155,8 +190,10 @@ async function main() {
     for (const c of evals) {
       console.log(`\n=== case: ${c.name} ===`);
       console.log(`prompt: ${redactText(c.prompt).text}`);
-      console.log(`assertions (${c.assertions.length}):`);
+      console.log(`assertions — LLM-graded (${c.assertions.length}):`);
       c.assertions.forEach((a, i) => console.log(`  ${i + 1}. ${a}`));
+      console.log(`checks — golden/no-LLM (${c.checks.length}):`);
+      c.checks.forEach((ch, i) => console.log(`  ${i + 1}. ${ch.kind}${ch.value ? ` "${ch.value}"` : ""}`));
     }
     console.log(
       `\nRun with --execute --yes to actually back-test (costs ~${evals.length * 3} LLM calls). ` +
@@ -172,7 +209,11 @@ async function main() {
   }
 
   const TM = 240_000; // heavy plan-generation prompts blow past the 120s default
-  let withPass = 0, basePass = 0, total = 0, doneCases = 0;
+  const createdAt = new Date().toISOString();
+  const events: any[] = [];
+  let withLlm = 0, baseLlm = 0, llmTotal = 0; // semantic (LLM-graded) arm
+  let withDet = 0, baseDet = 0, detTotal = 0; // deterministic golden (no-LLM) arm
+  let doneCases = 0;
   for (const c of evals) {
     // Per-case isolation: one LLM timeout must not kill the whole back-test.
     try {
@@ -180,30 +221,58 @@ async function main() {
         runClaudeP(withSkillPrompt(body, c.prompt), { model, timeoutMs: TM }),
         runClaudeP(baselinePrompt(c.prompt), { model, timeoutMs: TM }),
       ]);
-      const [withGrades, baseGrades] = await Promise.all([
+      // Arm 1 — LLM-graded semantic assertions (needs the grader model).
+      const [withG, baseG] = await Promise.all([
         gradeAssertions(c.prompt, withResp, c.assertions, model),
         gradeAssertions(c.prompt, baseResp, c.assertions, model),
       ]);
-      const w = withGrades.filter(Boolean).length;
-      const b = baseGrades.filter(Boolean).length;
-      withPass += w; basePass += b; total += c.assertions.length; doneCases++;
+      const wL = withG.filter(Boolean).length, bL = baseG.filter(Boolean).length;
+      // Arm 2 — deterministic golden checks ($0, no LLM), same responses.
+      const wD = gradeChecks(withResp, c.checks).filter(Boolean).length;
+      const bD = gradeChecks(baseResp, c.checks).filter(Boolean).length;
+      withLlm += wL; baseLlm += bL; llmTotal += c.assertions.length;
+      withDet += wD; baseDet += bD; detTotal += c.checks.length;
+      doneCases++;
       console.log(
-        `  ${c.name}: with-skill ${w}/${c.assertions.length} · baseline ${b}/${c.assertions.length} ` +
-        `· delta ${w - b >= 0 ? "+" : ""}${w - b}`
+        `  ${c.name}: LLM with ${wL}/${c.assertions.length} vs base ${bL} ` +
+        `(Δ${wL - bL >= 0 ? "+" : ""}${wL - bL}) · golden with ${wD}/${c.checks.length} vs base ${bD} ` +
+        `(Δ${wD - bD >= 0 ? "+" : ""}${wD - bD})`
       );
+      events.push({
+        skill: name, case: c.name, ts: createdAt,
+        llm: { with: wL, base: bL, total: c.assertions.length },
+        golden: { with: wD, base: bD, total: c.checks.length },
+      });
     } catch (e) {
       console.log(`  ${c.name}: SKIPPED (${(e as Error).message.slice(0, 60)})`);
     }
   }
   if (doneCases === 0) { console.log("[skilleval] all cases failed (likely LLM timeouts)."); return; }
-  const pct = (n: number) => (total ? ((n / total) * 100).toFixed(0) + "%" : "—");
+
+  const pct = (n: number, d: number) => (d ? ((n / d) * 100).toFixed(0) + "%" : "—");
   console.log(
-    `\n[skilleval] ${name}: with-skill ${withPass}/${total} (${pct(withPass)}) vs ` +
-    `baseline ${basePass}/${total} (${pct(basePass)}) — uplift ${withPass - basePass >= 0 ? "+" : ""}${withPass - basePass}.`
+    `\n[skilleval] ${name}:` +
+    `\n  LLM-graded:     with ${withLlm}/${llmTotal} (${pct(withLlm, llmTotal)}) vs base ${baseLlm}/${llmTotal} (${pct(baseLlm, llmTotal)}) — uplift ${withLlm - baseLlm >= 0 ? "+" : ""}${withLlm - baseLlm}` +
+    `\n  golden (no-LLM): with ${withDet}/${detTotal} (${pct(withDet, detTotal)}) vs base ${baseDet}/${detTotal} (${pct(baseDet, detTotal)}) — uplift ${withDet - baseDet >= 0 ? "+" : ""}${withDet - baseDet}`
   );
+
+  // ── Telemetry: per-case JSONL + a DB row, so "does the skill help, and still work
+  // over time" is queryable (BI), not just printed once. ──
+  const telDir = join(outDir, "telemetry");
+  mkdirSync(telDir, { recursive: true });
+  const telFile = join(telDir, `skilleval-${name}-${createdAt.replace(/[:.]/g, "-")}.jsonl`);
+  writeFileSync(telFile, events.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
+  const db = openDb();
+  upsertSkillTelemetry(db, {
+    skill: name, runner: describeRunner(), model, mode: "execute",
+    nCases: doneCases, withLlmPass: withLlm, baseLlmPass: baseLlm, llmTotal,
+    withDetPass: withDet, baseDetPass: baseDet, detTotal, createdAt,
+  });
+  db.close();
+  console.log(`[skilleval] telemetry → ${telFile} + skill_telemetry table.`);
   console.log(
-    `(Proxy back-test: skill prepended, not installed; graded by LLM. The real signal is the ` +
-    `canary closed loop — deploy, then re-mine future logs. Treat as a fast offline pre-check.)`
+    `(Proxy back-test: skill prepended, not installed. Golden arm is $0/no-LLM and stays valid ` +
+    `even if the grader drifts; LLM arm is semantic. Real signal is the canary loop — deploy, re-mine.)`
   );
 }
 

@@ -128,6 +128,26 @@ CREATE TABLE IF NOT EXISTS task_clusters (
   member_episode_ids_json TEXT
 );
 
+-- Skill back-test telemetry (Gate 2-B). One row per skilleval run, per skill. Tracks BOTH
+-- arms — the LLM-graded (semantic) and the deterministic golden (no-LLM) — with-skill vs
+-- baseline, so "does the skill actually help, and does it still work over time" is queryable.
+CREATE TABLE IF NOT EXISTS skill_telemetry (
+  run_id          TEXT PRIMARY KEY,   -- `${skill}@${created_at}`
+  skill           TEXT,
+  runner          TEXT,
+  model           TEXT,
+  mode            TEXT,               -- dry|execute
+  n_cases         INTEGER,
+  with_llm_pass   INTEGER,
+  base_llm_pass   INTEGER,
+  llm_total       INTEGER,
+  with_det_pass   INTEGER,
+  base_det_pass   INTEGER,
+  det_total       INTEGER,
+  created_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_skill_telemetry_skill ON skill_telemetry(skill);
+
 -- Generated skill drafts (skill-gen phase). One row per cluster. Cache-keyed on
 -- evidence_hash + prompt_hash + model so re-runs skip unchanged clusters (mirrors the
 -- judge cache discipline — don't re-spend LLM calls on identical evidence).

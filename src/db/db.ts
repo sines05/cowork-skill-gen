@@ -356,6 +356,48 @@ export function isSkillDrafted(
   );
 }
 
+// ── Skill back-test telemetry ─────────────────────────────────────────────────
+export interface SkillTelemetryRecord {
+  skill: string;
+  runner: string;
+  model: string;
+  mode: string; // dry | execute
+  nCases: number;
+  withLlmPass: number;
+  baseLlmPass: number;
+  llmTotal: number;
+  withDetPass: number;
+  baseDetPass: number;
+  detTotal: number;
+  createdAt: string;
+}
+
+export function upsertSkillTelemetry(db: Database, r: SkillTelemetryRecord): void {
+  db.query(
+    `INSERT INTO skill_telemetry (run_id, skill, runner, model, mode, n_cases,
+       with_llm_pass, base_llm_pass, llm_total, with_det_pass, base_det_pass, det_total, created_at)
+     VALUES ($rid,$skill,$runner,$model,$mode,$n,$wl,$bl,$lt,$wd,$bd,$dt,$ca)
+     ON CONFLICT(run_id) DO UPDATE SET
+       with_llm_pass=excluded.with_llm_pass, base_llm_pass=excluded.base_llm_pass,
+       llm_total=excluded.llm_total, with_det_pass=excluded.with_det_pass,
+       base_det_pass=excluded.base_det_pass, det_total=excluded.det_total`
+  ).run({
+    $rid: `${r.skill}@${r.createdAt}`,
+    $skill: r.skill,
+    $runner: r.runner,
+    $model: r.model,
+    $mode: r.mode,
+    $n: r.nCases,
+    $wl: r.withLlmPass,
+    $bl: r.baseLlmPass,
+    $lt: r.llmTotal,
+    $wd: r.withDetPass,
+    $bd: r.baseDetPass,
+    $dt: r.detTotal,
+    $ca: r.createdAt,
+  });
+}
+
 // ── Clusters ──────────────────────────────────────────────────────────────────
 export function upsertCluster(db: Database, c: TaskCluster): void {
   db.query(

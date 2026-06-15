@@ -2,7 +2,7 @@
 // new_task boundaries, used by classify.ts behind opts.classifyLlm.
 import { join } from "path";
 import type { TurnRole } from "../core/types.ts";
-import { runnerEnv, resolveBin } from "../llm/runner.ts";
+import { runnerEnv, resolveBin, modelTier } from "../llm/runner.ts";
 import { promptsDir } from "../core/paths.ts";
 
 // ── Optional LLM batch pass ───────────────────────────────────────────────────
@@ -43,7 +43,9 @@ export async function runClassifyLlm(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const proc = Bun.spawn([resolveBin("claude"), "-p", "--output-format", "json"], {
+    const proc = Bun.spawn(
+      [resolveBin("claude"), "-p", "--output-format", "json", "--model", modelTier("cheap")],
+      {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",

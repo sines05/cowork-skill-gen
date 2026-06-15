@@ -14,6 +14,7 @@
 // the consolidator uses the best model. All rounds are returned for persistence (audit trail).
 
 import { runClaudeP, runApi, getModel, parseAndValidate } from "./judge.ts";
+import { modelTier } from "./runner.ts";
 import type {
   JudgeLabel,
   JudgeMeta,
@@ -231,9 +232,10 @@ export async function judgeEpisodeDebate(
   episodeId: string,
   opts?: DebateOpts
 ): Promise<{ label: JudgeLabel; meta: JudgeMeta; debate: DebateResult }> {
-  const baseModel = getModel(opts);
-  const wideModel = opts?.perspectiveModel || baseModel;
-  const consModel = opts?.consolidatorModel || baseModel;
+  // Model tiering: perspectives/critique/refute (wide fan-out) run cheap; the consolidator
+  // (the call whose label is persisted + cache-keyed) runs on the best model.
+  const wideModel = opts?.perspectiveModel || modelTier("cheap");
+  const consModel = opts?.consolidatorModel || opts?.model || modelTier("best");
   const adapter: Adapter = opts?.adapter ?? "claude";
   const maxRounds = Math.max(1, opts?.maxRounds ?? 2);
   const call = makeCaller(adapter);
