@@ -8,9 +8,11 @@
 //   bun run setup:env --force    # overwrite
 //   MINER_CCS_PROFILE=son MINER_SOURCE=cowork bun run setup:env
 
-import { existsSync, writeFileSync } from "fs";
+import { existsSync, writeFileSync, readdirSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 import { firstExistingCoworkRoot } from "./src/ingest/cowork.ts";
-import { configureRunner, runnerEnv } from "./src/llm/runner.ts";
+import { resolveBin, parseExports } from "./src/llm/runner.ts";
 
 const force = process.argv.includes("--force");
 if (existsSync(".env") && !force) {
@@ -18,14 +20,49 @@ if (existsSync(".env") && !force) {
   process.exit(1);
 }
 
-// 1) Gateway creds from the ccs profile (parseExports already handles Windows PowerShell output).
-const profile = process.env.MINER_CCS_PROFILE || "son";
-configureRunner({ runner: "ccs", ccsProfile: profile });
-const env = await runnerEnv();
-const base = env.ANTHROPIC_BASE_URL || "";
-const token = env.ANTHROPIC_AUTH_TOKEN || "";
-if (base && token) console.log(`[setup-env] creds from ccs profile "${profile}" ✓`);
-else console.warn(`[setup-env] ⚠ no creds from ccs profile "${profile}" — leaving placeholders (fill ANTHROPIC_* by hand, or check \`ccs env ${profile}\`).`);
+// Read one ccs profile's env directly (so we can TRY several — runnerEnv() memoizes one).
+async function ccsEnv(profile: string): Promise<Record<string, string>> {
+  try {
+    const p = Bun.spawn([resolveBin("ccs"), "env", profile], { stdout: "pipe", stderr: "pipe" });
+    const out = await new Response(p.stdout).text();
+    if ((await p.exited) !== 0) return {};
+    return parseExports(out); // handles bash `export` AND Windows PowerShell `$env:` forms
+  } catch {
+    return {};
+  }
+}
+
+// 1) Gateway creds — AUTO-DETECT the profile instead of assuming "son" (which is one machine's
+//    name). Try MINER_CCS_PROFILE first, then every profile that has a ~/.ccs/<name>.settings.json,
+//    then a couple of common names; use the first that actually yields ANTHROPIC_* creds.
+const candidates: string[] = [];
+const forced = process.env.MINER_CCS_PROFILE?.trim();
+if (forced) candidates.push(forced);
+try {
+  for (const f of readdirSync(join(homedir(), ".ccs"))) {
+    const m = f.match(/^(.+)\.settings\.json$/i);
+    if (m) candidates.push(m[1]);
+  }
+} catch {
+  /* no ~/.ccs on this box */
+}
+for (const c of ["default", "son", "my-api"]) candidates.push(c);
+
+let base = "", token = "", profile = "";
+const tried = new Set<string>();
+for (const cand of candidates) {
+  if (!cand || tried.has(cand)) continue;
+  tried.add(cand);
+  const e = await ccsEnv(cand);
+  if (e.ANTHROPIC_BASE_URL && (e.ANTHROPIC_AUTH_TOKEN || e.ANTHROPIC_API_KEY)) {
+    base = e.ANTHROPIC_BASE_URL;
+    token = e.ANTHROPIC_AUTH_TOKEN || e.ANTHROPIC_API_KEY;
+    profile = cand;
+    break;
+  }
+}
+if (base && token) console.log(`[setup-env] creds from ccs profile "${profile}" ✓  (auto-detected among: ${[...tried].join(", ")})`);
+else console.warn(`[setup-env] ⚠ no ccs profile yielded creds (tried: ${[...tried].join(", ") || "none"}) — leaving placeholders. Fill ANTHROPIC_* by hand or set MINER_CCS_PROFILE.`);
 
 // 2) Cowork logs path. Forward-slash it so the docker-compose volume doesn't choke on the
 //    Windows drive colon (C:\ → C:/).

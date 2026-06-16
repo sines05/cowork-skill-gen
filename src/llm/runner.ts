@@ -174,7 +174,7 @@ export function describeRunner(): string {
 }
 
 // Parse the `export KEY='VALUE'` lines emitted by `ccs env <profile>`.
-function parseExports(out: string): Record<string, string> {
+export function parseExports(out: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const raw of out.split("\n")) {
     const line = raw.trim();
