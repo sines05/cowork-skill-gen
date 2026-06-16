@@ -1,0 +1,15 @@
+# Keep the image small + reproducible: deps are installed inside, data/secrets/logs are mounted.
+node_modules
+dist
+.git
+.env
+data
+out
+logs
+*.db
+*.db-wal
+*.db-shm
+bi/mb-data
+bi/data
+_*.sh
+*.log

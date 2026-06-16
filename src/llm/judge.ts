@@ -21,7 +21,7 @@ import type {
 } from "../core/types.ts";
 import { LABEL_SCHEMA_VERSION } from "../core/types.ts";
 import { sha256 } from "../core/util.ts";
-import { runnerEnv, describeRunner, resolveBin, recordFromEnvelope } from "../llm/runner.ts";
+import { runnerEnv, describeRunner, resolveBin, recordFromEnvelope, maxOutputTokens } from "../llm/runner.ts";
 import { join } from "path";
 import { promptsDir } from "../core/paths.ts";
 
@@ -100,11 +100,18 @@ export async function runClaudeP(
   const args = [resolveBin("claude"), "-p", "--output-format", "json"];
   if (opts?.model) args.push("--model", opts.model);
 
+  // Lift the CLI's output-token ceiling so long responses (esp. skill drafts) aren't
+  // truncated mid-JSON. Only set a default when the caller hasn't already pinned it.
+  const spawnEnv = { ...process.env, ...(await runnerEnv()) };
+  if (!spawnEnv.CLAUDE_CODE_MAX_OUTPUT_TOKENS) {
+    spawnEnv.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(maxOutputTokens());
+  }
+
   const proc = Bun.spawn(args, {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, ...(await runnerEnv()) },
+    env: spawnEnv,
   });
 
   // Feed the prompt and close stdin.
@@ -153,6 +160,16 @@ export async function runClaudeP(
   }
   // Ledger the spend (cost + tokens) for the BI dashboard before returning the result.
   recordFromEnvelope(envelope, opts?.model ?? MODEL);
+  // Surface output truncation explicitly — a "max_tokens" stop returns a result string
+  // that's cut mid-JSON, which otherwise fails downstream as a bogus "no JSON object".
+  if (envelope?.stop_reason === "max_tokens") {
+    const outTok = envelope?.usage?.output_tokens;
+    throw new Error(
+      `claude -p [${describeRunner()}] output truncated (stop_reason=max_tokens` +
+        `${typeof outTok === "number" ? `, output_tokens=${outTok}` : ""}). ` +
+        `Raise CLAUDE_CODE_MAX_OUTPUT_TOKENS / MINER_MAX_OUTPUT_TOKENS — or the provider's output cap is lower.`
+    );
+  }
   const result = envelope?.result;
   if (typeof result !== "string") {
     throw new Error(

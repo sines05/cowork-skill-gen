@@ -86,6 +86,7 @@ function sessionTimespan(events: RawEvent[]): {
 
 export async function discoverSessions(opts?: {
   project?: string;
+  session?: string;
   since?: string;
   limit?: number;
 }): Promise<SessionInfo[]> {
@@ -164,6 +165,11 @@ export async function discoverSessions(opts?: {
     const needle = opts.project.toLowerCase();
     result = result.filter((s) => s.project.toLowerCase().includes(needle));
   }
+  if (opts?.session) {
+    // Isolate ONE session: exact sessionId, or a prefix (the CLI prints an 8-char short id).
+    const needle = opts.session.toLowerCase();
+    result = result.filter((s) => s.sessionId.toLowerCase().startsWith(needle));
+  }
   if (opts?.since) {
     const since = opts.since;
     result = result.filter((s) => s.completedAt && s.completedAt >= since);
@@ -181,10 +187,11 @@ export async function discoverSessions(opts?: {
 // ── CLI ─────────────────────────────────────────────────────────────────────
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  const opts: { project?: string; since?: string; limit?: number } = {};
+  const opts: { project?: string; session?: string; since?: string; limit?: number } = {};
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--project") opts.project = args[++i];
+    else if (a === "--session") opts.session = args[++i];
     else if (a === "--since") opts.since = args[++i];
     else if (a === "--limit") opts.limit = Number(args[++i]);
   }

@@ -35,10 +35,11 @@ import {
   openDb,
   upsertSkillDraft,
   isSkillDrafted,
+  skillDraftOutPath,
   type SkillDraftRecord,
 } from "../db/db.ts";
-import { readFileSync } from "fs";
-import { promptsDir, outDir } from "../core/paths.ts";
+import { readFileSync, existsSync } from "fs";
+import { promptsDir, skillsOutDir } from "../core/paths.ts";
 import { assembleEvidence, type Evidence } from "./skillgen.evidence.ts";
 import {
   validateDraft,
@@ -54,7 +55,7 @@ import {
 } from "./skillgen.heldout.ts";
 
 const SKILLGEN_PROMPT_PATH = join(promptsDir, "skillgen.md");
-const DEFAULT_OUT_DIR = join(outDir, "skills");
+const DEFAULT_OUT_DIR = skillsOutDir;
 const COST_PER_DRAFT_USD = 0.3; // rough; only used for the confirmation gate
 const CONFIRM_COST_THRESHOLD_USD = 3;
 
@@ -208,11 +209,18 @@ async function main() {
       continue;
     }
 
-    // Cache: skip clusters whose evidence+prompt+model are unchanged.
+    // Cache: skip clusters whose evidence+prompt+model are unchanged — but ONLY if the
+    // generated folder still exists on disk. Wiping out/skills (or deleting one skill) must
+    // force a re-draft; otherwise a cache hit skips a cluster whose files are gone, silently
+    // leaving a hole in the output (this is exactly what dropped 5 cowork skills earlier).
     if (isSkillDrafted(db, { clusterId: cand.cluster_id, evidenceHash, promptHash, model })) {
-      skipped++;
-      log(`· cached: ${cand.label}`);
-      continue;
+      const prevPath = skillDraftOutPath(db, cand.cluster_id);
+      if (prevPath && existsSync(prevPath)) {
+        skipped++;
+        log(`· cached: ${cand.label}`);
+        continue;
+      }
+      // else: cached but the folder is gone → fall through and re-draft.
     }
 
     if (redactedCount > 0) log(`  redacted ${redactedCount} sensitive item(s) from ${cand.label} evidence`);
@@ -227,7 +235,14 @@ async function main() {
           ? await runApi(buildPrompt(evidence), { model })
           : await runClaudeP(buildPrompt(evidence), { model, timeoutMs: 300_000 });
       const jsonStr = extractJsonObject(raw);
-      if (!jsonStr) throw new Error("no JSON object in model response");
+      if (!jsonStr) {
+        // Surface what DID come back — a proxy/model that ignores the JSON instruction
+        // (prose, refusal, empty) is otherwise an opaque "no JSON" failure.
+        const snippet = raw.trim().slice(0, 200).replace(/\s+/g, " ");
+        throw new Error(
+          `no JSON object in model response (len=${raw.length}; starts: ${JSON.stringify(snippet)})`
+        );
+      }
       draft = validateDraft(JSON.parse(jsonStr), cand);
     } catch (e) {
       errors++;

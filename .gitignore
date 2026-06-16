@@ -10,3 +10,7 @@ bi/mb-data/
 bi/data/
 *.log
 .DS_Store
+.env
+data/
+logs/
+_*.sh

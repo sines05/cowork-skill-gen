@@ -339,6 +339,16 @@ export function upsertSkillDraft(db: Database, r: SkillDraftRecord): void {
   });
 }
 
+// Output path recorded for a cluster's last successful draft (or null). Lets skillgen
+// verify the generated folder still exists before honoring the cache — wiping out/skills
+// must force a re-draft, not silently skip and leave a hole in the output.
+export function skillDraftOutPath(db: Database, clusterId: string): string | null {
+  const r = db
+    .query(`SELECT out_path FROM skill_drafts WHERE cluster_id = ?`)
+    .get(clusterId) as { out_path?: string } | undefined;
+  return r?.out_path ?? null;
+}
+
 // Cache check: a draft already exists for this cluster with identical evidence+prompt+model.
 export function isSkillDrafted(
   db: Database,

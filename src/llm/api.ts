@@ -11,7 +11,7 @@
 //   ANTHROPIC_AUTH_TOKEN         → sent as `Authorization: Bearer` (gateway/ccs style)
 // Base URL: ANTHROPIC_BASE_URL or https://api.anthropic.com.
 
-import { recordLlmCall, estimateCostUsd } from "./runner.ts";
+import { recordLlmCall, estimateCostUsd, maxOutputTokens } from "./runner.ts";
 
 const DEFAULT_BASE = "https://api.anthropic.com";
 const API_VERSION = "2023-06-01";
@@ -35,7 +35,7 @@ export async function runApiMessage(prompt: string, opts?: ApiOpts): Promise<str
     );
   }
   const model = opts?.model ?? DEFAULT_MODEL;
-  const maxTokens = opts?.maxTokens ?? 4096;
+  const maxTokens = opts?.maxTokens ?? maxOutputTokens();
 
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -80,6 +80,14 @@ export async function runApiMessage(prompt: string, opts?: ApiOpts): Promise<str
     cost_usd: estimateCostUsd(model, inTok, outTok),
     ok: true,
   });
+  // Surface output truncation explicitly — a "max_tokens" stop is otherwise an opaque
+  // downstream "no JSON object" / invalid-label failure (the response is cut mid-JSON).
+  if (data?.stop_reason === "max_tokens") {
+    throw new Error(
+      `Anthropic API output truncated (stop_reason=max_tokens, output_tokens=${outTok}). ` +
+        `Raise MINER_MAX_OUTPUT_TOKENS (current ceiling ${maxTokens}) — or the model's own output cap is lower.`
+    );
+  }
   const text = Array.isArray(data?.content)
     ? data.content.filter((b: any) => b?.type === "text").map((b: any) => b.text).join("")
     : "";

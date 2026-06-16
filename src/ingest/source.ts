@@ -18,6 +18,7 @@ import { discoverCoworkSessions, readCoworkEvents } from "./cowork.ts";
 
 export interface DiscoverOpts {
   project?: string;
+  session?: string; // sessionId — exact match or prefix (e.g. the 8-char short id from logs)
   since?: string;
   limit?: number;
 }

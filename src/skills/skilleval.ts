@@ -69,6 +69,33 @@ function parseFlags(argv: string[]): Flags {
 
 interface EvalCase { name: string; prompt: string; expectations: string[]; checks: DetCheck[]; }
 
+// Third-party gateways (ccs profiles routing to a proxy) throw transient `exited 1`
+// errors under load — a single hiccup would otherwise drop an entire eval case to
+// SKIPPED. Retry a couple of times with a short backoff so a transient gateway error
+// doesn't masquerade as "the skill failed". Deterministic failures still surface after
+// the retries are exhausted.
+async function runWithRetry(
+  prompt: string,
+  opts: { model: string; timeoutMs: number },
+  tries = 3
+): Promise<string> {
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await runClaudeP(prompt, opts);
+    } catch (e) {
+      lastErr = e;
+      const msg = (e as Error)?.message ?? "";
+      // CRITICAL: do NOT retry a genuine TIMEOUT. A timeout already waited `timeoutMs`
+      // (e.g. 180s); retrying it 3× stalls the run for ~9–12 min with no benefit. Only
+      // transient gateway errors (non-zero exit / error envelope) are worth retrying.
+      if (/timed out/i.test(msg)) break;
+      if (i < tries - 1) await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 // ── Deterministic grader (the GOLDEN / no-LLM arm) ────────────────────────────
 // Objective, $0 checks. This is the half of the back-test that does NOT depend on an LLM,
 // so it stays valid even if the grader model drifts — and it's the part you can trust
@@ -174,7 +201,7 @@ async function gradeAssertions(
     `ASSERTIONS:\n${assertions.map((a, i) => `${i + 1}. ${a}`).join("\n")}\n\n` +
     `Return exactly ${assertions.length} booleans as a JSON array, e.g. [true,false,true].`;
   try {
-    const out = await runClaudeP(rubric, { model, timeoutMs: 180_000 });
+    const out = await runWithRetry(rubric, { model, timeoutMs: 180_000 });
     const m = out.match(/\[[\s\S]*?\]/);
     const arr = JSON.parse(m ? m[0] : out);
     if (Array.isArray(arr)) return assertions.map((_, i) => arr[i] === true);
@@ -237,7 +264,8 @@ async function main() {
     if (!ans || !/^y(es)?$/i.test(ans.trim())) { console.log("aborted."); return; }
   }
 
-  const TM = 240_000; // heavy plan-generation prompts blow past the 120s default
+  const TM = 180_000; // heavy plan prompts run ~30–60s via the gateway; 180s catches a real
+                      // hang fast (and timeouts no longer retry, so a hang costs one wait, not 3)
   const createdAt = new Date().toISOString();
   const events: any[] = [];
   let withLlm = 0, baseLlm = 0, llmTotal = 0; // semantic (LLM-graded) arm
@@ -247,8 +275,8 @@ async function main() {
     // Per-case isolation: one LLM timeout must not kill the whole back-test.
     try {
       const [withResp, baseResp] = await Promise.all([
-        runClaudeP(withSkillPrompt(body, c.prompt), { model, timeoutMs: TM }),
-        runClaudeP(baselinePrompt(c.prompt), { model, timeoutMs: TM }),
+        runWithRetry(withSkillPrompt(body, c.prompt), { model, timeoutMs: TM }),
+        runWithRetry(baselinePrompt(c.prompt), { model, timeoutMs: TM }),
       ]);
       // Arm 1 — LLM-graded semantic assertions (needs the grader model).
       const [withG, baseG] = await Promise.all([

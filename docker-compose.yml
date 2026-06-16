@@ -1,0 +1,32 @@
+# Root stack — the miner ENGINE (this file) + the Metabase BI layer (bi/docker-compose.yml).
+#
+# The engine talks to the LLM over HTTP (--runner api), so the only secrets it needs are a
+# gateway base URL + token, supplied via a .env file (see .env.example). It mounts the host's
+# Cowork logs read-only and persists SQLite + generated skills to ./data and ./out.
+#
+#   cp .env.example .env                       # fill ANTHROPIC_BASE_URL / _AUTH_TOKEN, COWORK_LOGS
+#   docker compose run --rm miner              # interactive launcher (menu)
+#   docker compose run --rm miner pipeline --source cowork --runner api --mine --yes   # headless stage
+#   docker compose run --rm miner skillcheck   # any package.json script works as the command
+#
+# Dashboard (separate, already-built layer):
+#   bun run bi:refresh && docker compose -f bi/docker-compose.yml up -d   → http://localhost:3000
+
+services:
+  miner:
+    build: .
+    image: cowork-miner
+    stdin_open: true   # keep STDIN open so the launcher + cost-gate prompts work (docker run -it)
+    tty: true
+    environment:
+      # Required: gateway creds (the api runner sends Authorization: Bearer <token> to BASE_URL).
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:?set ANTHROPIC_BASE_URL in .env}
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:?set ANTHROPIC_AUTH_TOKEN in .env}
+      MINER_SOURCE: ${MINER_SOURCE:-cowork}
+      MINER_RUNNER: api
+      # Optional: bound spend and pick model tiers without touching code.
+      MINER_MAX_COST: ${MINER_MAX_COST:-}
+    volumes:
+      - ./data:/data                       # cowork.db / analysis.db (persisted)
+      - ./out:/app/out                     # generated skills + reports + telemetry (persisted)
+      - ${COWORK_LOGS:-./logs}:/logs:ro    # host Cowork sessions dir, read-only

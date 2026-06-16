@@ -150,6 +150,31 @@ bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   #
 #                                        → http://localhost:3000  (admin@cowork.local / Cowork-admin-1)
 ```
 
+### Run ONE session through the whole pipeline
+
+Same `bun run all` (judge → cluster → draft skills → validate) — but scoped to a **single
+session** and isolated from the main corpus. No separate `pipeline` / `skillgen` steps: just set
+three env vars and run `all` as usual.
+
+```bash
+bun run discover           # list sessions → copy a short-id, e.g. 71fbfc58
+
+MINER_SESSION=71fbfc58 MINER_DB=one.db MINER_SKILLS_OUT=one-skills bun run all
+
+ls one-skills/             # the skills that session produced
+```
+
+| Env var | What it does |
+|---|---|
+| `MINER_SESSION` | Which session to run — exact `sessionId` or its 8-char prefix (from `discover`). |
+| `MINER_DB` | Use an **isolated DB** so judging/clustering never touches the main `analysis.db`. |
+| `MINER_SKILLS_OUT` | Write skills to an **isolated dir** instead of the committed `out/skills/`. |
+| `MINER_MAX_COST` | (optional) Cap spend, e.g. `MINER_MAX_COST=10`. |
+
+> Drop `MINER_DB` + `MINER_SKILLS_OUT` if you *want* the session folded into the main corpus and
+> `out/skills/`. The same env vars work on any single stage too (`MINER_SESSION=… bun run pipeline`).
+> Prefer flags? `--session <id>`, `--db <path>` (pipeline/skillgen), `--out <dir>` (skillgen) do the same.
+
 **What the flags mean** (only the ones above; all are optional unless a stage needs them):
 
 | Flag | Used by | What it does |
@@ -158,6 +183,11 @@ bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   #
 | `--mine` | `pipeline` | After judging, **cluster** similar episodes and rank which are worth codifying. |
 | `--max-cost N` | `pipeline` | **Circuit breaker** — stop judging once estimated spend reaches $N. |
 | `--yes` | `pipeline`, `skillgen` | Skip the "spend money?" confirmation prompt (for scripts/CI). |
+| `--session <id>` | `pipeline`, `discover` | **Scope to ONE session** — exact `sessionId` or its 8-char prefix (from `discover`). |
+| `--project <substr>` | `pipeline`, `discover` | Scope to sessions whose **project name** contains `<substr>`. |
+| `--limit N` | `pipeline`, `discover` | Scope to the **earliest N** sessions. |
+| `--db <path>` | `pipeline`, `skillgen` | Use an **isolated** DB so a scoped run never mixes with the main corpus. |
+| `--out <dir>` | `skillgen` | Write skills to a custom dir (default `out/skills/`). Pair with `--db` for isolation. |
 | `--skill <name>` | `skilleval` | Which generated skill (folder name under `out/skills/`) to back-test. |
 
 **Optional, when you want more:**
@@ -167,7 +197,7 @@ bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   #
 | `--judge-debate` `--judge-rounds N` | `pipeline` | Multi-perspective **ensemble** judge (productivity/accuracy/cost lenses → critique→refute for N rounds → consolidate). ~8× the cost, far more robust. Default N=2. |
 | `--no-llm` | `skillgen` | $0 dry run: print the **redacted evidence** the model would see, write nothing. |
 | `--dry` / `--execute` | `skilleval` | Plan only ($0) vs. actually run the eval. Defaults to `--dry`. |
-| `--runner ccs\|claude\|api` | any LLM stage | How to reach the model: `ccs` (default, falls back to plain `claude`) · `claude` (CLI) · `api` (HTTP Messages API — for Windows / no-CLI). |
+| `--runner ccs\|claude\|api` `--ccs-profile <name>` | any LLM stage | How to reach the model: `ccs` (**default — profile `son`**; override with `--ccs-profile` or env `MINER_CCS_PROFILE`; falls back to plain `claude` if the profile is missing) · `claude` (ambient CLI login) · `api` (HTTP Messages API — Windows / no-CLI). |
 | `bun run check` | — | Run hard data invariants ($0); use after stage 1 to sanity-check ingest. |
 
 ---
@@ -249,11 +279,13 @@ canonical `RawEvent`, so the whole pipeline runs unchanged. Claude **Code** CLI 
 (`~/.claude/projects/**/*.jsonl`) work too.
 
 ```bash
-bun run pipeline.ts --source cowork --runner claude --mine   # ingest Cowork logs, LLM via claude -p
+bun run pipeline --source cowork --mine --yes               # ingest Cowork logs (LLM via default ccs:son)
+bun run pipeline --source cowork --session <id> --mine --yes # just one Cowork session
 bun run build:win                                            # single .exe for MDM fleet rollout
 ```
 
 - `--source claude-code` (default) | `cowork` — `src/ingest/source.ts`
+- LLM runner defaults to `ccs:son`; on a box without that profile use `--runner claude` (ambient CLI) or `--runner api`
 - `COWORK_SESSIONS_ROOT=<dir>` overrides the root (Linux / CI / mounted logs)
 - Claude **Desktop chat** (LevelDB/IndexedDB) is intentionally out of scope — Cowork + Code cover the use case.
 
@@ -306,16 +338,36 @@ Metabase** cho lãnh đạo.
 - **Riêng tư:** redact secrets/PII/đường dẫn **tại biên** trước khi tới LLM hoặc ghi file.
 - **Dashboard:** Metabase (`bun run bi:provision` tự dựng + in URL, vd `/dashboard/3`) — `http://localhost:3000`.
 - **Windows/Cowork:** transcript thật ở `audit.jsonl` (xem `docs/COWORK_STORAGE.md`); chạy
-  `--source cowork --runner claude`, đóng gói `bun run build:win`.
+  `--source cowork` (LLM mặc định qua `ccs:son`; máy không có profile thì thêm `--runner claude`),
+  đóng gói `bun run build:win`.
 
-Chạy nhanh:
+**Chạy nhanh** (LLM mặc định đi qua `ccs:son`; đổi bằng `--ccs-profile <tên>` hoặc env `MINER_CCS_PROFILE`):
 ```bash
 bun install
-bun run pipeline.ts --no-judge && bun run check        # cấu trúc, $0
-bun run pipeline.ts --max-cost 6 --yes --mine          # judge (tốn $)
-bun run skillgen --yes                                  # sinh skill
-bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   # dashboard
+bun run all                                  # tất cả: log → judge → cluster → sinh skill → kiểm (1 lệnh)
+MINER_MAX_COST=10 bun run all                # như trên, có chặn chi phí $10 (judge ≈ $0.4/episode)
 ```
+
+Từng bước (nếu muốn kiểm soát):
+```bash
+bun run pipeline --no-judge && bun run check     # 1. log → episode + kiểm cấu trúc   ($0)
+bun run pipeline --mine --yes --max-cost 6       # 2. judge + cluster                  (tốn $)
+bun run skillgen --yes                           # 3. sinh skill → out/skills/
+bun run skillcheck                               # 4. kiểm chất lượng skill           ($0)
+bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   # 5. dashboard
+```
+
+Chạy **trọn pipeline cho đúng một session** (vẫn là `bun run all`, chỉ thêm env — không tách lệnh):
+```bash
+bun run discover           # liệt kê session → lấy short-id, vd 71fbfc58
+
+MINER_SESSION=71fbfc58 MINER_DB=one.db MINER_SKILLS_OUT=one-skills bun run all
+
+ls one-skills/             # skill mà session đó sinh ra
+```
+- `MINER_SESSION` = session cần chạy (id đầy đủ hoặc 8 ký tự đầu) · `MINER_DB` = DB riêng (không đụng `analysis.db`)
+  · `MINER_SKILLS_OUT` = thư mục skill riêng (không đè `out/skills/`) · thêm `MINER_MAX_COST=10` để chặn chi phí.
+- Bỏ `MINER_DB`+`MINER_SKILLS_OUT` nếu muốn gộp luôn vào corpus chính.
 
 Chi tiết: [`docs/COWORK_STORAGE.md`](docs/COWORK_STORAGE.md) (lưu trữ Cowork/Code) ·
 [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) (schema transcript) ·

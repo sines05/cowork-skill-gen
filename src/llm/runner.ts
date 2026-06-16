@@ -7,12 +7,13 @@
 //
 //   "ccs"    → inject the profile's env into the claude subprocess. We read
 //              `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` from `ccs env <profile>`
-//              and merge them over process.env. Default profile: "my-api".
+//              and merge them over process.env. Default profile: "son"
+//              (override with MINER_CCS_PROFILE or --ccs-profile).
 //   "claude" → plain claude with the ambient environment (the original behavior).
 //
 // configureRunner() is called once at pipeline startup; every Bun.spawn site
 // (judge/classify/mine) merges runnerEnv() into its subprocess env. The default is
-// "ccs" + "my-api" so an unconfigured caller still routes through the my-api profile.
+// "ccs" + "son" so an unconfigured caller still routes through the son profile.
 
 // "ccs"/"claude" spawn the `claude` CLI; "api" calls the HTTP Messages API (Windows /
 // headless, where the CLI is absent). For "api", runnerEnv() returns {} (the API adapter
@@ -20,7 +21,9 @@
 export type RunnerName = "ccs" | "claude" | "api";
 
 let _runner: RunnerName = "ccs";
-let _ccsProfile = "my-api";
+// Default ccs profile. Overridable via MINER_CCS_PROFILE so the default isn't baked to one
+// machine's profile name; falls back to "son" (the profile present on this deployment).
+let _ccsProfile = process.env.MINER_CCS_PROFILE?.trim() || "son";
 
 // ── LLM spend ledger ───────────────────────────────────────────────────────────
 // Every real LLM call appends one line to out/telemetry/llm_calls.jsonl. The DB loader
@@ -134,6 +137,17 @@ export function modelTier(tier: ModelTier): string {
   return env && env.trim() ? env.trim() : TIER_DEFAULTS[tier];
 }
 
+// Per-call output-token ceiling for BOTH LLM paths — the `claude -p` CLI (injected as
+// CLAUDE_CODE_MAX_OUTPUT_TOKENS) and the HTTP Messages API (`max_tokens`). The old API
+// default of 4096 truncated long skill drafts mid-JSON (surfaced as a bogus "no JSON
+// object"); 16000 covers a full skill. Override with MINER_MAX_OUTPUT_TOKENS. Note a
+// proxy/model may still enforce a lower cap of its own — truncation is then surfaced via
+// the stop_reason check at each call site, not silently swallowed.
+export function maxOutputTokens(): number {
+  const env = Number(process.env.MINER_MAX_OUTPUT_TOKENS);
+  return Number.isFinite(env) && env > 0 ? env : 16000;
+}
+
 // Resolve a CLI's real executable path before spawning. On Windows the `claude`/`ccs`
 // entry points are `.cmd` shims and Bun.spawn(["claude", …]) does NOT resolve a bare name
 // against PATHEXT — it fails with `ENOENT: uv_spawn 'claude'`. Bun.which() does the PATH +
@@ -162,8 +176,16 @@ export function describeRunner(): string {
 // Parse the `export KEY='VALUE'` lines emitted by `ccs env <profile>`.
 function parseExports(out: string): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const line of out.split("\n")) {
-    const m = line.match(/^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+  for (const raw of out.split("\n")) {
+    const line = raw.trim();
+    // `ccs env <profile>` emits SHELL-SPECIFIC syntax: bash `export KEY=VAL` on POSIX,
+    // but PowerShell `$env:KEY = "VAL"` on Windows. The old bash-only regex silently
+    // matched nothing on Windows → ccs mode fell back to plain `claude` even with a valid
+    // profile. Accept both forms (and a bare `KEY=VAL`) so ccs routing works cross-platform.
+    const m =
+      line.match(/^export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$/) ||
+      line.match(/^\$env:([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/) ||
+      line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/); // bare KEY=VAL (UPPER-only, avoids prose)
     if (!m) continue;
     let v = m[2].trim();
     if (

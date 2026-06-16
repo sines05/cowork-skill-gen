@@ -190,6 +190,11 @@ export async function discoverCoworkSessions(opts?: DiscoverOpts): Promise<Sessi
     const needle = opts.project.toLowerCase();
     result = result.filter((s) => s.project.toLowerCase().includes(needle));
   }
+  if (opts?.session) {
+    // Isolate ONE session: exact taskId, or a prefix (logs print an 8-char short id).
+    const needle = opts.session.toLowerCase();
+    result = result.filter((s) => s.sessionId.toLowerCase().startsWith(needle));
+  }
   if (opts?.since) {
     const since = opts.since;
     result = result.filter((s) => s.completedAt && s.completedAt >= since);

@@ -1,13 +1,13 @@
 // Orchestrator (resumable): discover → classify → group → signals → subagents → render → judge → store.
 // Usage:
-//   bun run pipeline.ts [--project <substr>] [--limit N] [--since ISO] [--resume]
+//   bun run pipeline.ts [--project <substr>] [--session <id>] [--limit N] [--since ISO] [--resume]
 //                       [--classify-llm] [--max-episodes N] [--no-judge]
 //                       [--max-cost USD] [--yes] [--db <path>] [--mine]
 //                       [--runner ccs|claude] [--ccs-profile <name>]
 //
 // --runner picks how the headless `claude -p` calls are routed (default: ccs):
 //   ccs    → real `claude` binary with the ccs profile's env injected
-//            (ANTHROPIC_BASE_URL/_AUTH_TOKEN from `ccs env <--ccs-profile>`, default my-api)
+//            (ANTHROPIC_BASE_URL/_AUTH_TOKEN from `ccs env <--ccs-profile>`, default son)
 //   claude → plain `claude` with the ambient environment
 //
 // Resume model: all writes are idempotent upserts and the judge is cache-keyed on
@@ -50,6 +50,7 @@ const MAX_CONSEC_JUDGE_ERRORS = 5; // circuit breaker for a broken judge/CLI
 
 interface Flags {
   project?: string;
+  session?: string;
   limit?: number;
   since?: string;
   resume: boolean;
@@ -87,6 +88,7 @@ function parseFlags(argv: string[]): Flags {
     const next = () => argv[++i];
     switch (a) {
       case "--project": f.project = next(); break;
+      case "--session": f.session = next(); break;
       case "--limit": f.limit = numFlag("--limit", next()); break;
       case "--since": f.since = next(); break;
       case "--resume": f.resume = true; break;
@@ -122,6 +124,11 @@ function parseFlags(argv: string[]): Flags {
     const v = Number(process.env.MINER_MAX_COST);
     if (Number.isFinite(v) && v >= 0) f.maxCost = v;
   }
+  // Env fallback for the session scope: lets the fixed `bun run all` chain run end-to-end
+  // for ONE session (MINER_SESSION=<id> bun run all) without editing the script. --session wins.
+  if (f.session === undefined && process.env.MINER_SESSION?.trim()) {
+    f.session = process.env.MINER_SESSION.trim();
+  }
   if (f.limit !== undefined && f.limit < 0) {
     console.error("[pipeline] --limit must be >= 0. Aborting.");
     process.exit(2);
@@ -141,7 +148,7 @@ async function main() {
   const flags = parseFlags(process.argv.slice(2));
   const db = openDb(flags.dbPath);
 
-  // Select the LLM runner before any headless `claude -p` call. Default: ccs:my-api.
+  // Select the LLM runner before any headless `claude -p` call. Default: ccs:son.
   configureRunner({ runner: flags.runner, ccsProfile: flags.ccsProfile });
   log(`LLM runner: ${describeRunner()}`);
 
@@ -154,9 +161,14 @@ async function main() {
   const cliVersion = flags.noJudge ? "" : await getCliVersion();
 
   const source = getSource(flags.source);
-  log(`source: ${source.name} · discovering sessions${flags.project ? ` (project~="${flags.project}")` : ""}…`);
+  log(
+    `source: ${source.name} · discovering sessions` +
+      `${flags.project ? ` (project~="${flags.project}")` : ""}` +
+      `${flags.session ? ` (session^="${flags.session}")` : ""}…`
+  );
   const sessions = await source.discover({
     project: flags.project,
+    session: flags.session,
     since: flags.since,
     limit: flags.limit,
   });

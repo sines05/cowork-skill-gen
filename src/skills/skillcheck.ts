@@ -13,7 +13,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join, basename, dirname } from "path";
 import { redactText } from "../core/redact.ts";
-import { outDir } from "../core/paths.ts";
+import { skillsOutDir } from "../core/paths.ts";
 
 interface Finding { level: "FAIL" | "WARN"; msg: string; }
 
@@ -113,13 +113,14 @@ export function checkSkill(dir: string): { name: string; findings: Finding[] } {
   return { name, findings };
 }
 
-// Resolve the target(s): a SKILL.md path, a skill dir, or default = all of out/skills.
+// Resolve the target(s): a SKILL.md path, a skill dir, or default = all skills in skillsOutDir
+// (out/skills, or MINER_SKILLS_OUT — kept in sync with skillgen so `all` checks what it wrote).
 function resolveTargets(arg?: string): string[] {
   if (arg) {
     const p = arg.endsWith("SKILL.md") ? dirname(arg) : arg;
     return [p];
   }
-  const root = join(outDir, "skills");
+  const root = skillsOutDir;
   if (!existsSync(root)) return [];
   return readdirSync(root)
     .map((n) => join(root, n))
