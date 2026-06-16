@@ -1,0 +1,55 @@
+{
+  "name": "web-competitive-research-with-fallback",
+  "cluster_id": "web-research-browser-automation",
+  "artifact_type": "skill",
+  "confidence": 0.42,
+  "gate": {
+    "status": "pass",
+    "issues": []
+  },
+  "execution": {
+    "isolated": false,
+    "recommended_model": "sonnet"
+  },
+  "related_skills": [
+    {
+      "name": "browser-extract-with-fallback-tiers",
+      "relation": "depends_on",
+      "why": "Reliable per-page extraction (screenshot -> page text -> search) is the gathering primitive this research workflow orchestrates across sites."
+    },
+    {
+      "name": "cite-sources-in-research-output",
+      "relation": "see_also",
+      "why": "Every figure in the comparison must carry a source URL; a citation skill enforces that discipline."
+    }
+  ],
+  "citations": [
+    "65a3d9d3-16c0-4cc2-8660-69f0bc8ebbfe#0",
+    "friction: chrome extension screenshots could not be persisted to the sandbox filesystem — a core deliverable",
+    "friction: heavy vn real-estate sites loaded slowly / rendered prices as image/canvas, blocking clean screenshots",
+    "friction: upload_image / save_to_disk attempts did not produce files in the target folder",
+    "pattern: Fell back to WebSearch + HTML page-text extraction when live screenshots stalled",
+    "pattern: Batched browser actions to reduce round-trips",
+    "pattern: Transparently disclosed that screenshots could not be saved rather than hiding the gap",
+    "pattern: Delivered a substantive comparison with cited sources",
+    "pattern: Broke the task into a tracked task list before starting"
+  ],
+  "eval_provenance": {
+    "source": "in-distribution",
+    "n_train": 1,
+    "n_held_out": 0,
+    "held_out_episode_ids": [],
+    "train_episode_ids": [
+      "65a3d9d3-16c0-4cc2-8660-69f0bc8ebbfe#0"
+    ],
+    "note": "Cluster too thin to spare a held-out episode; evals fall back to the LLM's in-distribution cases (NOT a generalisation test)."
+  },
+  "evidence_summary": {
+    "frequency": 1,
+    "n_sessions": 1,
+    "success_rate": 0,
+    "dominant_pattern": null,
+    "recommended_intervention": "none"
+  },
+  "generated_at": "2026-06-15T22:33:27.513Z"
+}

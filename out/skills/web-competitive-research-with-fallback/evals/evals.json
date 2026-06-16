@@ -1,0 +1,57 @@
+{
+  "skill_name": "web-competitive-research-with-fallback",
+  "eval_provenance": {
+    "source": "in-distribution",
+    "n_train": 1,
+    "n_held_out": 0,
+    "held_out_episode_ids": [],
+    "train_episode_ids": [
+      "65a3d9d3-16c0-4cc2-8660-69f0bc8ebbfe#0"
+    ],
+    "note": "Cluster too thin to spare a held-out episode; evals fall back to the LLM's in-distribution cases (NOT a generalisation test)."
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Go to the pricing pages of three competing SaaS products, capture the current plans, save the screenshots to a folder called 'competitors_q3', and summarize how they differ from our product.",
+      "expected_output": "A cited side-by-side comparison of the three products' plans plus differences vs the baseline, with an explicit, verified statement of whether the screenshots were actually saved to the folder.",
+      "expectations": [
+        "Visits each named site's pricing page (not just the homepage) and records plan/price figures per product",
+        "Attributes each figure to a source URL",
+        "Verifies that the requested files actually exist in the target folder before claiming they were saved, and discloses the gap honestly if they were not",
+        "Produces a clear differences-vs-baseline summary"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "url_present"
+        },
+        {
+          "kind": "min_length",
+          "value": "300"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Screenshot each of these real-estate project pricing pages and save them to 'rivals_july', then tell me how they compare to ours.",
+      "expected_output": "When screenshots can't be persisted, the response delivers a cited text/HTML-derived comparison and explicitly states the screenshots could not be saved rather than implying success.",
+      "expectations": [
+        "Detects that screenshot files were not persisted instead of assuming the save succeeded",
+        "Falls back to page-text extraction and/or web search to gather the pricing data",
+        "Transparently discloses that the save-to-folder deliverable could not be met",
+        "Still delivers a substantive, source-cited comparison"
+      ],
+      "files": [],
+      "checks": [
+        {
+          "kind": "url_present"
+        },
+        {
+          "kind": "regex",
+          "value": "(?i)could not|unable|not saved|not persist|instead"
+        }
+      ]
+    }
+  ]
+}
