@@ -118,7 +118,7 @@ The image bundles the Claude Code CLI, so **every** stage works; auth is env-onl
 Full detail in [`docs/PACKAGING.md`](docs/PACKAGING.md).
 
 ```bash
-bun run setup:env               # writes .env: auto-detects the Cowork logs path + the ccs profile
+bun run setup:env               # writes .env: auto-detects Cowork + Claude Code log paths + the ccs profile
 docker build -t cowork-miner .
 
 docker compose run --rm miner                 # interactive menu — pick corpus + stage
@@ -132,7 +132,8 @@ docker compose --profile dashboard up -d      # dashboard (Metabase + auto-provi
 `setup:env` works on **any** machine — it scans `~/.ccs/*.settings.json` and uses the first profile
 that yields creds (no profile name hardcoded). No ccs? `cp .env.example .env` and fill the two
 `ANTHROPIC_*` values by hand, or set `MINER_CCS_PROFILE=<name>`. Corpus = `MINER_SOURCE=cowork|claude-code`
-in `.env`; cap spend with `MINER_MAX_COST`.
+in `.env`; cap spend with `MINER_MAX_COST`. Both corpora are mounted read-only into the container
+(`COWORK_LOGS` → `/logs`, `CLAUDE_LOGS` → `/claude-logs`), so either source works without re-mounting.
 
 ### Local Bun (no Docker)
 

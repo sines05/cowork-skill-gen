@@ -22,7 +22,18 @@
 FROM node:22-bookworm-slim
 
 # Bun (runs the engine) + the Claude Code CLI (the LLM path), both global, both via npm.
-RUN npm install -g bun @anthropic-ai/claude-code && npm cache clean --force
+#
+# The CLI (≥2.x) is NO LONGER pure JS: it runs from a NATIVE binary shipped as a SEPARATE
+# per-platform package (@anthropic-ai/claude-code-<os>-<arch>). The main package is supposed to
+# pull it via an OPTIONAL postinstall dep, but that resolution is flaky behind some networks /
+# proxies — when it's skipped, npm silently leaves a shebang-less shim and `claude` then dies at
+# runtime with `ENOEXEC: posix_spawn '/usr/local/bin/claude'` (Bun execs it directly, with no
+# shell fallback). So install the native package EXPLICITLY (arch-matched) and ASSERT
+# `claude --version` at build time — a broken CLI now FAILS the build instead of shipping silently.
+RUN ARCH="$(node -p 'process.arch === "arm64" ? "arm64" : "x64"')" \
+ && npm install -g bun @anthropic-ai/claude-code "@anthropic-ai/claude-code-linux-${ARCH}" \
+ && claude --version \
+ && npm cache clean --force
 
 WORKDIR /app
 

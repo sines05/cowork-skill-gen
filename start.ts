@@ -98,6 +98,7 @@ function menu() {
  6) Shadow loop      → deploy / report
  7) Dashboard        → Metabase (Docker)
  8) FULL pipeline    → mine → gen → check
+ s) Mine ONE session/project  (full pipeline, filtered)
  c) Toggle corpus      q) Quit
 ==============================================`);
 }
@@ -139,6 +140,19 @@ async function main() {
       run(["pipeline", "--mine", "--yes", ...runnerFlags()]);
       run(["skillgen", "--yes", "--min-frequency", "1", ...runnerFlags()]);
       run(["skillcheck"]);
+    } else if (c === "s") {
+      // Mine a SINGLE session (or project) end-to-end — the menu otherwise only runs the
+      // whole corpus. Maps to the pipeline's own --session / --project filters.
+      const kind = ask("  filter by [s]ession id or [p]roject name? [s/p]: ").toLowerCase();
+      const flag = kind === "p" || kind === "project" ? "--project" : "--session";
+      const val = ask(`  ${flag === "--project" ? "project name (substring)" : "session id (8-char prefix ok)"}: `);
+      if (val) {
+        run(["pipeline", "--mine", "--yes", flag, val, ...runnerFlags()]);
+        run(["skillgen", "--yes", "--min-frequency", "1", ...runnerFlags()]);
+        run(["skillcheck"]);
+      } else {
+        console.log("  (nothing entered — skipped.)");
+      }
     } else if (c) {
       console.log("  ? unknown choice");
     }

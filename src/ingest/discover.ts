@@ -16,6 +16,22 @@ import { readEvents } from "../core/util.ts";
 const PROJECTS_ROOT =
   process.env.MINER_PROJECTS_ROOT || join(homedir(), ".claude", "projects");
 
+// The resolved Claude Code projects root (env override or `~/.claude/projects`).
+export function claudeProjectsRoot(): string {
+  return PROJECTS_ROOT;
+}
+
+// The projects root IF it actually exists on this machine, else null. Mirrors
+// firstExistingCoworkRoot() so the setup helper can auto-fill CLAUDE_LOGS instead
+// of making the user hand-hunt `~/.claude/projects`.
+export function firstExistingClaudeRoot(): string | null {
+  try {
+    return existsSync(PROJECTS_ROOT) ? PROJECTS_ROOT : null;
+  } catch {
+    return null;
+  }
+}
+
 // The encoded form of the user's HOME dir, e.g. "/home/son" -> "-home-son" (Linux)
 // or "/Users/alice" -> "-Users-alice" (macOS). Sessions launched straight from the
 // home dir land in this bare bucket and are scratch/misc, not real project work.
