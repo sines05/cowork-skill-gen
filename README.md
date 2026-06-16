@@ -112,42 +112,46 @@ flowchart TD
 
 ## Quickstart
 
-### One command — logs → validated skills
+### Docker — whole system, one stack (recommended)
+
+The image bundles the Claude Code CLI, so **every** stage works; auth is env-only (no login).
+Full detail in [`docs/PACKAGING.md`](docs/PACKAGING.md).
 
 ```bash
-bun install                          # once: deps (only @types/bun)
+cp .env.example .env            # gateway creds (e.g. copy from `ccs env son`) + COWORK_LOGS
+docker build -t cowork-miner .
 
-bun run all                          # mine Claude Code logs (~/.claude/projects)
-MINER_SOURCE=cowork bun run all      # mine Claude Cowork logs (audit.jsonl)  ← Windows/Cowork
+docker compose run --rm miner                 # interactive menu — pick corpus + stage
+docker compose run --rm miner all             # or headless: mine → draft → validate
+docker compose run --rm miner skilleval --skill <name> --execute --yes   # back-test one skill
+
+docker compose --profile dashboard up -d      # dashboard (Metabase + auto-provision)
+#   → http://localhost:3000/dashboard/2   (admin@cowork.local / Cowork-admin-1)
 ```
 
-`bun run all` chains stages 1–4: `pipeline --mine --yes && skillgen --yes --min-frequency 1 && skillcheck`.
-Pick the corpus with the **`MINER_SOURCE`** env var (`cowork` or `claude-code`, default `claude-code`).
+Corpus = `MINER_SOURCE=cowork|claude-code` in `.env`; cap spend with `MINER_MAX_COST`.
 
-Two things `all` deliberately does NOT do:
-- **No dashboard** — stage 6 needs Docker, so run it separately (below).
-- **No cost ceiling** — `all` judges the whole corpus. Set **`MINER_MAX_COST`** (USD) to bound it,
-  e.g. `MINER_MAX_COST=10 bun run all`. On a large corpus, judging everything on the opus tier
-  can run into tens of dollars (≈ $0.40/episode), so set a cap unless you mean to judge it all.
-
-> `--min-frequency 1` makes `skillgen` draft **leads** (any cluster with ≥1 episode), so a thin
-> corpus still produces skills to review. Drop it for the stricter "worth-codifying" gate.
-
-> Note: `bun run pipeline --mine --yes` on its own already runs the **whole mining pipeline**
-> in one command (ingest → classify → judge → cluster → report). `all` just also drafts + validates skills.
-
-### Or stage by stage — one command each, top to bottom
+### Local Bun (no Docker)
 
 ```bash
-bun run pipeline --no-judge              # 1. logs → episodes      (free, no LLM)
-bun run pipeline --mine --yes --max-cost 6   # 2. judge + cluster  (LLM; --max-cost optional cap)
-bun run skillgen --yes                   # 3. clusters → skills    → out/skills/
-bun run skillcheck                       # 4. validate structure   (free)
-bun run skilleval --skill <name>         # 5. back-test on held-out tasks (LLM)
-bun run skillshadow --skill <name> --deploy   # 5b. mark live + snapshot pre-deploy baseline
-bun run skillshadow --skill <name> --report   #     (after re-mining future logs) before/after delta
-bun run views && bun run bi:refresh && bun run bi:up && bun run bi:provision   # 6. dashboard
-#                                        → http://localhost:3000  (admin@cowork.local / Cowork-admin-1)
+bun install                     # once (deps: only @types/bun)
+bun run start                   # interactive launcher — pick corpus + stage
+MINER_SOURCE=cowork bun run all # or one shot: mine → draft → validate
+```
+
+`all` = `pipeline --mine --yes && skillgen --yes --min-frequency 1 && skillcheck` (uncapped —
+set `MINER_MAX_COST` on a large corpus, ≈ $0.40/episode on the opus tier).
+
+### Stage by stage (Bun)
+
+```bash
+bun run pipeline --no-judge          # 1. logs → episodes          (free)
+bun run pipeline --mine --yes        # 2. judge + cluster + report (LLM; --max-cost N caps)
+bun run skillgen --yes               # 3. clusters → skills        → out/skills/
+bun run skillcheck                   # 4. validate                 (free)
+bun run skilleval --skill <name>     # 5. back-test on held-out    (LLM)
+bun run skillshadow --skill <name> --deploy   # 6. mark live; --report after re-mining
+bun run views && docker compose --profile dashboard up -d   # dashboard → :3000
 ```
 
 ### Run ONE session through the whole pipeline
