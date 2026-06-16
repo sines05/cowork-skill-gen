@@ -33,7 +33,8 @@ straight from the env (bearer to your gateway). Cowork logs bind-mount read-only
 generated skills persist to `./data` and `./out`.
 
 ```bash
-cp .env.example .env          # fill ANTHROPIC_BASE_URL / _AUTH_TOKEN (e.g. from `ccs env son`), COWORK_LOGS
+bun run setup:env             # auto-writes .env: detects the Cowork logs path + pulls ccs creds
+                              # (or `cp .env.example .env` and fill it by hand on a box without ccs)
 docker build -t cowork-miner .
 docker compose run --rm miner                                      # interactive launcher in the container
 docker compose run --rm miner pipeline --source cowork --runner claude --mine --yes   # one stage, headless

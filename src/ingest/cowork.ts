@@ -72,6 +72,20 @@ function coworkRoots(): string[] {
   return roots;
 }
 
+// The first candidate root that actually exists on this machine, or null. Exposed so a
+// setup helper can auto-fill COWORK_LOGS (the deep `Packages\Claude_<hash>\…` path) instead
+// of making the user hunt for it by hand.
+export function firstExistingCoworkRoot(): string | null {
+  for (const r of coworkRoots()) {
+    try {
+      if (existsSync(r)) return r;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
 // Directory names never worth descending into while hunting for `audit.jsonl`.
 const PRUNE_DIRS = new Set([
   ".claude", "outputs", "node_modules", ".git", "Cache", "skills-plugin", "blob_storage",

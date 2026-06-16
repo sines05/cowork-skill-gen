@@ -8,6 +8,7 @@
     "discover": "bun run src/ingest/discover.ts",
     "classify": "bun run src/pipeline/classify.ts",
     "start": "bun run start.ts",
+    "setup:env": "bun run setup-env.ts",
     "pipeline": "bun run pipeline.ts",
     "all": "bun run pipeline --mine --yes && bun run skillgen --yes --min-frequency 1 && bun run skillcheck",
     "check": "bun run src/analysis/check.ts",

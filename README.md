@@ -118,7 +118,7 @@ The image bundles the Claude Code CLI, so **every** stage works; auth is env-onl
 Full detail in [`docs/PACKAGING.md`](docs/PACKAGING.md).
 
 ```bash
-cp .env.example .env            # gateway creds (e.g. copy from `ccs env son`) + COWORK_LOGS
+bun run setup:env               # auto-detect Cowork logs path + ccs creds → .env  (no hand-editing)
 docker build -t cowork-miner .
 
 docker compose run --rm miner                 # interactive menu — pick corpus + stage
