@@ -26,16 +26,41 @@ top; `c` toggles corpus, `q` quits. This is the answer to "the commands should b
 
 ## 2. Docker (most reproducible — for a server / non-dev machine)
 
-The image runs **entirely over HTTP** (`--runner api`), so it needs no `claude`/`ccs` CLI —
-only gateway creds in the environment. Cowork logs are bind-mounted read-only; SQLite +
+The image **bundles the Claude Code CLI** so EVERY stage works (mining, skill-gen, **and**
+skilleval / calibrate — which call `claude -p` directly and have no HTTP path). Auth needs
+**no interactive login**: `claude -p` reads `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`
+straight from the env (bearer to your gateway). Cowork logs bind-mount read-only; SQLite +
 generated skills persist to `./data` and `./out`.
 
 ```bash
 cp .env.example .env          # fill ANTHROPIC_BASE_URL / _AUTH_TOKEN (e.g. from `ccs env son`), COWORK_LOGS
-docker compose run --rm miner                                   # interactive launcher in the container
-docker compose run --rm miner pipeline --source cowork --runner api --mine --yes   # one stage, headless
-docker compose run --rm miner skillcheck                        # any package.json script as the command
+docker build -t cowork-miner .
+docker compose run --rm miner                                      # interactive launcher in the container
+docker compose run --rm miner pipeline --source cowork --runner claude --mine --yes   # one stage, headless
+docker compose run --rm miner skilleval --skill <name> --execute --yes --runner claude  # the back-test, in-container
 ```
+
+> The image carries Node (the CLI's runtime) + the Claude Code CLI, so it's larger than a
+> pure-Bun image — the price of running the *whole* system in one container. (The alternative,
+> "HTTP-only / no CLI", would require giving `skilleval` + `calibrate` an `--runner api` path;
+> not done yet.)
+
+### Dashboard, integrated (one stack)
+
+The leadership dashboard is wired into the **same** compose file under a `dashboard` profile —
+Metabase reads the live `./data` DB and `dashboard-init` builds the BI views + provisions every
+card (including the **back-test / eval uplift** cards), then prints the dashboard URL:
+
+```bash
+docker compose --profile dashboard up -d        # metabase + auto-provision
+docker compose logs dashboard-init | grep dashboard/   # → http://localhost:3000/dashboard/<id>
+# login: admin@cowork.local / Cowork-admin-1   ·   pick the cowork corpus with MINER_DB_FILE=cowork.db
+```
+
+The dashboard now shows, in order: Overview KPIs · Cost & tokens · Outcomes · Generated skills ·
+**Skill back-test (with vs no-skill uplift, LLM + golden)**. The eval cards read `v_skill_telemetry`
+(the latest `--execute` run per skill), so "does the skill actually help" is on the leadership view,
+not just "a skill was generated".
 
 Dashboard stays the already-built separate layer:
 

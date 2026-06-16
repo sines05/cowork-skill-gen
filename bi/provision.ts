@@ -78,6 +78,12 @@ const CARDS = [
     sql: "SELECT project, COUNT(*) AS episodes FROM v_episode_full GROUP BY project ORDER BY episodes DESC" },
   { key: "skills", name: "Generated skills", display: "table", col: 12, row: 24, w: 12, h: 6,
     sql: "SELECT name, artifact_type, gate_status, confidence FROM v_skill_drafts" },
+
+  // ── Back-test (Gate 2-B): does the skill actually help? ───────────────────────
+  { key: "eval_uplift", name: "Skill back-test — LLM uplift (with − without)", display: "bar", col: 0, row: 30, w: 12, h: 6,
+    sql: "SELECT skill, llm_uplift FROM v_skill_telemetry ORDER BY llm_uplift DESC" },
+  { key: "eval_table", name: "Back-test detail (with vs no-skill)", display: "table", col: 12, row: 30, w: 12, h: 6,
+    sql: "SELECT skill, n_cases, with_llm_pass || '/' || llm_total AS with_skill, base_llm_pass || '/' || llm_total AS no_skill, llm_uplift AS llm_uplift, golden_uplift FROM v_skill_telemetry" },
 ];
 
 // Build (find-or-create) the cards + dashboard. Idempotent: re-running reuses cards by
@@ -182,6 +188,7 @@ async function main() {
   const meta = await j("GET", `/api/database/${db.id}/metadata`, undefined, session);
   const tables: string[] = (meta.data?.tables ?? []).map((t: any) => t.name);
   const want = ["v_episode_full", "v_task_type_summary", "v_outcome_distribution", "v_calibration", "v_skill_drafts",
+    "v_skill_telemetry",
     "v_llm_cost_total", "v_llm_cost_by_phase", "v_llm_cost_by_model", "v_llm_cost_by_day", "v_workload_tokens"];
   const seen = want.filter((v) => tables.includes(v));
   console.log(`[provision] data source id=${db.id}; tables visible: ${tables.length}`);

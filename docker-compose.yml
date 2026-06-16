@@ -1,12 +1,12 @@
 # Root stack — the miner ENGINE (this file) + the Metabase BI layer (bi/docker-compose.yml).
 #
-# The engine talks to the LLM over HTTP (--runner api), so the only secrets it needs are a
-# gateway base URL + token, supplied via a .env file (see .env.example). It mounts the host's
-# Cowork logs read-only and persists SQLite + generated skills to ./data and ./out.
+# The image bundles the Claude Code CLI, so EVERY stage (incl. skilleval / calibrate) works.
+# It authenticates with NO interactive login — just gateway creds in the env, supplied via a
+# .env file (see .env.example). Host Cowork logs mount read-only; SQLite + skills persist.
 #
 #   cp .env.example .env                       # fill ANTHROPIC_BASE_URL / _AUTH_TOKEN, COWORK_LOGS
 #   docker compose run --rm miner              # interactive launcher (menu)
-#   docker compose run --rm miner pipeline --source cowork --runner api --mine --yes   # headless stage
+#   docker compose run --rm miner pipeline --source cowork --runner claude --mine --yes   # headless stage
 #   docker compose run --rm miner skillcheck   # any package.json script works as the command
 #
 # Dashboard (separate, already-built layer):
@@ -16,17 +16,64 @@ services:
   miner:
     build: .
     image: cowork-miner
+    profiles: ["engine"]   # a run-once CLI, not a daemon: `docker compose run --rm miner …`
+                           # (so `--profile dashboard up` doesn't try to start/require it)
     stdin_open: true   # keep STDIN open so the launcher + cost-gate prompts work (docker run -it)
     tty: true
     environment:
-      # Required: gateway creds (the api runner sends Authorization: Bearer <token> to BASE_URL).
+      # Required: gateway creds. `claude -p` reads these from the env (Authorization: Bearer
+      # <token> to BASE_URL) — no `claude login` needed.
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:?set ANTHROPIC_BASE_URL in .env}
       ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:?set ANTHROPIC_AUTH_TOKEN in .env}
       MINER_SOURCE: ${MINER_SOURCE:-cowork}
-      MINER_RUNNER: api
+      MINER_RUNNER: claude
       # Optional: bound spend and pick model tiers without touching code.
       MINER_MAX_COST: ${MINER_MAX_COST:-}
     volumes:
       - ./data:/data                       # cowork.db / analysis.db (persisted)
       - ./out:/app/out                     # generated skills + reports + telemetry (persisted)
       - ${COWORK_LOGS:-./logs}:/logs:ro    # host Cowork sessions dir, read-only
+
+  # ── Dashboard (opt-in: `docker compose --profile dashboard up -d`) ──────────────
+  # Metabase reads the SAME ./data the miner writes to. `dashboard-init` then (re)builds the
+  # BI views in the DB and provisions the leadership dashboard (incl. the back-test/eval cards),
+  # printing the dashboard URL. Pick the corpus DB with MINER_DB_FILE (default analysis.db).
+  metabase:
+    image: metabase/metabase:latest
+    profiles: ["dashboard"]
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data                       # the miner's SQLite DB (with v_* views) — read live
+      - mb-data:/metabase-data             # Metabase's own app DB (persisted)
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+      JAVA_TIMEZONE: ${TZ:-Asia/Ho_Chi_Minh}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+    restart: unless-stopped
+
+  dashboard-init:
+    image: cowork-miner
+    profiles: ["dashboard"]
+    depends_on:
+      metabase:
+        condition: service_healthy
+    environment:
+      MINER_DATA_DIR: /data
+      MINER_DB: /data/${MINER_DB_FILE:-analysis.db}
+      MB_URL: http://metabase:3000
+      MB_DB_PATH: /data/${MINER_DB_FILE:-analysis.db}
+    volumes:
+      - ./data:/data
+      - ./out:/app/out
+    # Build BI views into the DB, then provision the dashboard + print its URL.
+    entrypoint: ["sh", "-c"]
+    command: ["bun run views && bun run bi:provision"]
+    restart: "no"
+
+volumes:
+  mb-data:

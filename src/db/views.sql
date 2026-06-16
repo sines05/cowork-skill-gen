@@ -89,6 +89,35 @@ SELECT name, cluster_id, artifact_type, gate_status, confidence,
 FROM skill_drafts
 ORDER BY confidence DESC;
 
+-- Skill back-test results (Gate 2-B). The LATEST --execute run per skill, with the
+-- with-skill vs no-skill uplift on both arms (LLM-graded + deterministic golden). This is
+-- what makes "does the skill actually help" visible on the leadership dashboard, not just
+-- "a skill was generated". Positive llm_uplift = the guidance improved the plan; golden
+-- uplift is the stricter, $0-checkable signal.
+DROP VIEW IF EXISTS v_skill_telemetry;
+CREATE VIEW v_skill_telemetry AS
+SELECT
+  t.skill,
+  t.created_at,
+  t.n_cases,
+  t.with_llm_pass,
+  t.base_llm_pass,
+  t.llm_total,
+  (t.with_llm_pass - t.base_llm_pass)            AS llm_uplift,
+  ROUND(100.0 * t.with_llm_pass / NULLIF(t.llm_total, 0), 0) AS with_llm_pct,
+  ROUND(100.0 * t.base_llm_pass / NULLIF(t.llm_total, 0), 0) AS base_llm_pct,
+  t.with_det_pass,
+  t.base_det_pass,
+  t.det_total,
+  (t.with_det_pass - t.base_det_pass)            AS golden_uplift
+FROM skill_telemetry t
+JOIN (
+  SELECT skill, MAX(created_at) AS mx
+  FROM skill_telemetry WHERE mode = 'execute' GROUP BY skill
+) latest ON latest.skill = t.skill AND latest.mx = t.created_at
+WHERE t.mode = 'execute'
+ORDER BY llm_uplift DESC;
+
 -- ── LLM spend (the pipeline's OWN cost — how much we spent mining) ──────────────
 -- All derived from llm_calls (loaded from out/telemetry/llm_calls.jsonl). Distinct from
 -- episode tokens (the work analyzed); see v_workload_tokens for that.
